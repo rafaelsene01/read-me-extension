@@ -77,8 +77,10 @@ Stack: WXT 0.21 + React 19 + TypeScript, alvo Chromium (Chrome/Edge/Brave).
 
 ## Handoff
 
-- **Última fase concluída**: Tasks (spec, design e tasks escritos e validados).
-- **Artefatos**: `.specs/features/tts-reader/spec.md`, `design.md`, `tasks.md`.
-- **Gates**: `validate_spec.py` 0 erros; `validate_tasks.py` 0 erros, 12 avisos de `Tests: none` confirmados contra a Test Coverage Matrix.
-- **Próximo passo**: Execute — começar por T1 (scaffold WXT). Nenhum código escrito ainda; a pasta do projeto contém apenas `.specs/`.
-- **Git**: repositório ainda não inicializado; T1 deve criar o repo antes do primeiro commit atômico.
+- **Última fase concluída**: Execute — 23 de 23 tarefas implementadas (T1..T22 do plano original mais T23, acrescentada durante a execução).
+- **Verifier**: PASS na iteração 2. `.specs/features/tts-reader/validation.md`; `validate_state.py tts-reader` 0 erros. Iteração 1 devolveu FAIL com 5 lacunas, todas fechadas (select de idioma de origem, detecção de iframe/shadow DOM, fronteira dos 500.000, cota em `setBlocks`, lacuna de precisão registrada na spec).
+- **Gates**: `pnpm compile && pnpm test && pnpm build` verde; 135 testes, 0 falhas; sensor de discriminação 8/8 mutantes mortos; `pnpm zip` gera `.output/tts-reader-0.1.0-chrome.zip`.
+- **Git**: apenas `d4f71d0` (scaffold T1) está commitado. **T2..T23 e os fixes vivem no working tree, não commitados**, a pedido do usuário. As mensagens de commit atômicas por tarefa, na ordem, estão em `.specs/features/tts-reader/COMMITS.md` — commitar tudo de uma vez perde a granularidade.
+- **Próximo passo**: UAT manual no Chrome (18 itens listados em `validation.md`), depois commitar seguindo `COMMITS.md`.
+- **Decisão pendente do usuário**: `components/CaptureBar.tsx` pede `<all_urls>` em vez do host específico, porque sem a permissão `tabs` o Chrome oculta a URL da aba. Funciona, mas amplia a permissão de forma permanente, contra a intenção da AD-005.
+- **Lições**: 6 candidatas registradas em `.specs/lessons.json` (`lessons.py list`).

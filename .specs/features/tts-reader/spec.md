@@ -46,6 +46,8 @@ nativas do navegador — sem servidor e sem chave de API.
 | Tradução indisponível | Botão visível e desabilitado com o motivo | Esconder o botão gera a pergunta "por que sumiu?" | y |
 | Persistência | `storage.local` (buffer, preferências, cursor) | Sobrevive ao fechamento do painel e ao restart do service worker | y |
 | Teste de componentes React | Não há; a lógica testável vive em `lib/` e as telas são verificadas manualmente | Montar runner de DOM para componentes de painel custa mais do que entrega nesta v1 | y |
+| Fronteira dos 500.000 caracteres (P1-A AC10) | Limite inclusivo: a captura que deixaria o buffer em exatamente 500.000 já é recusada | "atingiu 500.000" inclui a marca; testes de fronteira em 499.999, 500.000 e 500.001 fixam o comportamento | y |
+| "Em até 1 segundo" da P1-B AC10 | Verificado manualmente no UAT, não por teste | O limite é de latência de UI e vive em `entrypoints/sidepanel/App.tsx`, que a Test Coverage Matrix classifica como `Tests: none`; nenhum teste unitário pode afirmá-lo | y |
 
 **Open questions:** none - all resolved or logged above.
 
@@ -164,22 +166,22 @@ nativas do navegador — sem servidor e sem chave de API.
 
 | Requirement ID | Story | Phase | Status |
 | -------------- | ----- | ----- | ------ |
-| TTS-01 | P1: Capturar texto da página | Tasks | Pending |
-| TTS-02 | P1: Capturar texto da página | Tasks | Pending |
-| TTS-03 | P1: Capturar texto da página | Tasks | Pending |
-| TTS-04 | P1: Capturar texto da página | Tasks | Pending |
-| TTS-05 | P1: Capturar texto da página | Tasks | Pending |
-| TTS-06 | P1: Ouvir o texto com destaque | Tasks | Pending |
-| TTS-07 | P1: Ouvir o texto com destaque | Tasks | Pending |
-| TTS-08 | P1: Ouvir o texto com destaque | Tasks | Pending |
-| TTS-09 | P1: Ouvir o texto com destaque | Tasks | Pending |
-| TTS-10 | P1: Ouvir o texto com destaque | Tasks | Pending |
-| TTS-11 | P1: Ouvir o texto com destaque | Tasks | Pending |
-| TTS-12 | P2: Traduzir mantendo o original | Tasks | Pending |
-| TTS-13 | P2: Traduzir mantendo o original | Tasks | Pending |
-| TTS-14 | P2: Traduzir mantendo o original | Tasks | Pending |
-| TTS-15 | P2: Ajustar o texto capturado | Tasks | Pending |
-| TTS-16 | P1: Ouvir o texto com destaque | Tasks | Pending |
+| TTS-01 | P1: Capturar texto da página | Execute | Done |
+| TTS-02 | P1: Capturar texto da página | Execute | Done |
+| TTS-03 | P1: Capturar texto da página | Execute | Done |
+| TTS-04 | P1: Capturar texto da página | Execute | Done |
+| TTS-05 | P1: Capturar texto da página | Execute | Done |
+| TTS-06 | P1: Ouvir o texto com destaque | Execute | Done |
+| TTS-07 | P1: Ouvir o texto com destaque | Execute | Done |
+| TTS-08 | P1: Ouvir o texto com destaque | Execute | Done |
+| TTS-09 | P1: Ouvir o texto com destaque | Execute | Done |
+| TTS-10 | P1: Ouvir o texto com destaque | Execute | Done |
+| TTS-11 | P1: Ouvir o texto com destaque | Execute | Done |
+| TTS-12 | P2: Traduzir mantendo o original | Execute | Done |
+| TTS-13 | P2: Traduzir mantendo o original | Execute | Done |
+| TTS-14 | P2: Traduzir mantendo o original | Execute | Done |
+| TTS-15 | P2: Ajustar o texto capturado | Execute | Done |
+| TTS-16 | P1: Ouvir o texto com destaque | Execute | Done |
 
 **Mapa dos IDs:**
 

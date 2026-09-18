@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 7,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "ac_gap::when an ac says the user can override a value a task that only derives that value from a default does not satisfy it the override control is part of the ac",
+      "text": "When an AC says the user can override a value, a task that only derives that value from a default does not satisfy it - the override control is part of the AC.",
+      "signal": "ac_gap",
+      "scope": "spec/acceptance-criteria",
+      "status": "candidate",
+      "features": [
+        "tts-reader"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "spec.md P2-A AC6 (spec/acceptance-criteria)"
+      ],
+      "created": "2026-09-18T18:05:23Z",
+      "last_seen": "2026-09-18T18:05:23Z"
+    },
+    {
+      "id": "L-002",
+      "key": "surviving_mutant::a numeric threshold ac needs boundary tests at limit 1 limit and limit 1 without them and are indistinguishable and the rule is unverified",
+      "text": "A numeric threshold AC needs boundary tests at limit-1, limit and limit+1; without them > and >= are indistinguishable and the rule is unverified.",
+      "signal": "surviving_mutant",
+      "scope": "lib/",
+      "status": "candidate",
+      "features": [
+        "tts-reader"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "lib/storage.ts:33 (lib/)"
+      ],
+      "created": "2026-09-18T18:05:23Z",
+      "last_seen": "2026-09-18T18:05:23Z"
+    },
+    {
+      "id": "L-003",
+      "key": "ac_gap::an edge case that only surfaces as a caught exception from a generic call is not detected assert each named condition explicitly",
+      "text": "An edge case that only surfaces as a caught exception from a generic call is not detected - assert each named condition explicitly.",
+      "signal": "ac_gap",
+      "scope": "lib/extract.ts",
+      "status": "candidate",
+      "features": [
+        "tts-reader"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "spec.md Edge Cases (iframe/shadow DOM) (lib/extract.ts)"
+      ],
+      "created": "2026-09-18T18:05:24Z",
+      "last_seen": "2026-09-18T18:05:24Z"
+    },
+    {
+      "id": "L-004",
+      "key": "ac_gap::a helper written by one task with no task owning its wiring leaves the edge case uncovered every helper needs a named caller in some task",
+      "text": "A helper written by one task with no task owning its wiring leaves the edge case uncovered - every helper needs a named caller in some task.",
+      "signal": "ac_gap",
+      "scope": "tasks/",
+      "status": "candidate",
+      "features": [
+        "tts-reader"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "lib/segment.ts chunkSentence (tasks/)"
+      ],
+      "created": "2026-09-18T18:05:24Z",
+      "last_seen": "2026-09-18T18:05:24Z"
+    },
+    {
+      "id": "L-005",
+      "key": "spec_deviation::design docs naming a browser api must be checked against the real surface before tasks chrome tts delivers events via the per utterance onevent callback in ttsoptions not a global event",
+      "text": "Design docs naming a browser API must be checked against the real surface before Tasks - chrome.tts delivers events via the per-utterance onEvent callback in TtsOptions, not a global event.",
+      "signal": "spec_deviation",
+      "scope": "design/",
+      "status": "candidate",
+      "features": [
+        "tts-reader"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "entrypoints/background.ts chrome.tts.onEvent (design/)"
+      ],
+      "created": "2026-09-18T18:05:24Z",
+      "last_seen": "2026-09-18T18:05:24Z"
+    },
+    {
+      "id": "L-006",
+      "key": "spec_deviation::any await before permissions request or translator create loses the user gesture pass already known values as arguments instead of fetching them in the handler",
+      "text": "Any await before permissions.request or Translator.create loses the user gesture - pass already-known values as arguments instead of fetching them in the handler.",
+      "signal": "spec_deviation",
+      "scope": "lib/",
+      "status": "candidate",
+      "features": [
+        "tts-reader"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "lib/capture.ts requestAndCapture (lib/)"
+      ],
+      "created": "2026-09-18T18:05:25Z",
+      "last_seen": "2026-09-18T18:05:25Z"
+    }
+  ]
+}
