@@ -1,0 +1,5 @@
+Voice avatars
+
+Generated once with DiceBear (https://www.dicebear.com), style "Avataaars"
+by Pablo Stanley (https://avataaars.com/), free for personal and commercial use.
+DiceBear code: MIT. Files are static; nothing is fetched at runtime.

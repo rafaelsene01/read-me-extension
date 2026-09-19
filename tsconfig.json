@@ -6,7 +6,9 @@
     "baseUrl": ".",
     // Repeated from .wxt/tsconfig.json so the shadcn CLI can resolve the alias.
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      // onnxruntime-web ships types.d.ts but its "exports" map does not point to it.
+      "onnxruntime-web": ["./node_modules/onnxruntime-web/types.d.ts"]
     }
   }
 }

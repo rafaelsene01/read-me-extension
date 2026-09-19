@@ -77,4 +77,20 @@ describe('chunkSentence', () => {
 
     expect(chunks).toEqual(['alpha bravo', 'charlie', 'delta']);
   });
+
+  it('prefers cutting after punctuation over the last space', () => {
+    // The last space would give 'Um trecho longo; depois outro'.
+    expect(chunkSentence('Um trecho longo; depois outro pedaço final', 30)).toEqual([
+      'Um trecho longo;',
+      'depois outro pedaço final',
+    ]);
+  });
+
+  it('never cuts inside a number or a URL', () => {
+    const chunks = chunkSentence('Valor 1,5 em https://example.com/a,b fim', 25);
+
+    expect(chunks.join(' ')).toBe('Valor 1,5 em https://example.com/a,b fim');
+    expect(chunks.some((chunk) => chunk.includes('1,5'))).toBe(true);
+    expect(chunks.some((chunk) => chunk.includes('https://example.com/a,b'))).toBe(true);
+  });
 });

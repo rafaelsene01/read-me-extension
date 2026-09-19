@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('Command contract', () => {
-  it('covers play, pause, stop, seek, setRate, setVoice, capture and state', () => {
+  it('covers play, pause, stop, seek, setRate, setVoice, setTtsEngine, downloadTtsModel, capture and state', () => {
     expect([...COMMAND_TYPES]).toEqual([
       'play',
       'pause',
@@ -32,6 +32,8 @@ describe('Command contract', () => {
       'seek',
       'setRate',
       'setVoice',
+      'setTtsEngine',
+      'downloadTtsModel',
       'capture',
       'state',
     ]);

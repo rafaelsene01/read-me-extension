@@ -1,4 +1,5 @@
 import type { Cursor, PlaybackState } from './types';
+import type { LocalEngineId, TtsEngineId } from './tts/types';
 
 export const COMMAND_TYPES = [
   'play',
@@ -7,6 +8,8 @@ export const COMMAND_TYPES = [
   'seek',
   'setRate',
   'setVoice',
+  'setTtsEngine',
+  'downloadTtsModel',
   'capture',
   'state',
 ] as const;
@@ -21,8 +24,10 @@ export type Command =
   | { type: 'pause' }
   | { type: 'stop' }
   | { type: 'seek'; cursor: Cursor }
-  | { type: 'setRate'; rate: number }
+  | { type: 'setRate'; rate: number; commit?: boolean }
   | { type: 'setVoice'; lang: string; voiceName: string }
+  | { type: 'setTtsEngine'; engine: TtsEngineId }
+  | { type: 'downloadTtsModel'; engine: LocalEngineId }
   | { type: 'capture'; mode: CaptureMode }
   | { type: 'state' };
 

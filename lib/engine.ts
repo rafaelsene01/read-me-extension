@@ -1,5 +1,7 @@
 import { firstCursor, nextCursor, reconcile, sentenceAt } from './cursor';
 import { chunkSentence } from './segment';
+import { localVoiceKey } from './tts/registry';
+import type { TtsEngineId, TtsRuntimeStatus } from './tts/types';
 import type { Block, Cursor, PlaybackState, Prefs } from './types';
 
 /** chrome.tts refuses an utterance longer than this. */
@@ -11,9 +13,19 @@ export interface SpeakOptions {
   voiceName?: string;
 }
 
+/**
+ * Generalized TTS contract: implementations resolve once the utterance is in
+ * flight and report completion/failure through Engine.onTtsEvent, or reject
+ * speak() directly (treated like an 'error' event).
+ */
 export interface EngineTts {
-  speak(utterance: string, options: SpeakOptions): void | Promise<void>;
-  stop(): void;
+  speak(utterance: string, options: SpeakOptions): Promise<void>;
+  stop(): void | Promise<void>;
+  /**
+   * Changes the speed of the utterance in the air. Resolves false when the
+   * engine cannot (chrome.tts): the engine then restarts the sentence.
+   */
+  setRate?(rate: number): boolean | Promise<boolean>;
 }
 
 export interface EngineStorage {
@@ -47,6 +59,8 @@ export interface EngineDeps {
   tts: EngineTts;
   storage: EngineStorage;
   broadcast: (state: PlaybackState) => void | Promise<void>;
+  /** Optional provider of the selected engine's model status for the panel. */
+  getTtsStatus?: () => TtsRuntimeStatus | undefined;
 }
 
 export interface Engine {
@@ -54,15 +68,21 @@ export interface Engine {
   pause(): Promise<void>;
   stop(): Promise<void>;
   seek(cursor: Cursor): Promise<void>;
-  setRate(rate: number): Promise<void>;
+  /**
+   * `commit` marks the end of a gesture (slider released): only then is a
+   * sentence restarted on an engine that cannot change speed live.
+   */
+  setRate(rate: number, commit?: boolean): Promise<void>;
   setVoice(lang: string, voiceName: string): Promise<void>;
+  /** Switches the speech engine, stopping playback while keeping the cursor. */
+  setTtsEngine(engine: TtsEngineId): Promise<void>;
   /** Called after the buffer changes so a dangling cursor is repositioned. */
   blocksChanged(): Promise<void>;
   onTtsEvent(event: TtsEvent): Promise<void>;
   getState(): Promise<PlaybackState>;
 }
 
-export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
+export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDeps): Engine {
   let playing = false;
   let error: string | null = null;
   /** Set before we stop the engine ourselves, so the resulting event is not reported. */
@@ -77,7 +97,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
   let pending: { chunks: string[]; options: SpeakOptions } | null = null;
 
   async function publish(): Promise<void> {
-    await broadcast({ playing, cursor: await storage.getCursor(), error });
+    await broadcast({ playing, cursor: await storage.getCursor(), error, tts: getTtsStatus?.() });
   }
 
   /** Buffer seen through the active tab; everything downstream uses this view. */
@@ -109,7 +129,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
     pending = rest.length > 0 ? { chunks: rest, options } : null;
 
     await publish();
-    await tts.speak(head ?? sentence.text, options);
+    await safeSpeak(head ?? sentence.text, options);
   }
 
   async function finish(blocks: Block[]): Promise<void> {
@@ -124,6 +144,18 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
     pending = null;
     error = message;
     await publish();
+  }
+
+  /**
+   * Speak treating a rejected speak() like an 'error' event: same halt path,
+   * cursor left on the sentence that failed so it can be retried.
+   */
+  async function safeSpeak(text: string, options: SpeakOptions): Promise<void> {
+    try {
+      await tts.speak(text, options);
+    } catch (err) {
+      await halt(err instanceof Error ? err.message : 'Falha na leitura');
+    }
   }
 
   return {
@@ -147,7 +179,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
       expectInterrupt = true;
       pending = null;
       playing = false;
-      tts.stop();
+      await tts.stop();
       // The cursor stays where it is, so the next play resumes this sentence.
       await publish();
     },
@@ -156,7 +188,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
       expectInterrupt = true;
       pending = null;
       playing = false;
-      tts.stop();
+      await tts.stop();
       const blocks = await blocksView();
       await storage.setCursor(firstCursor(blocks));
       await publish();
@@ -168,19 +200,53 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
 
       expectInterrupt = true;
       pending = null;
-      tts.stop();
+      await tts.stop();
       await speakAt(cursor, await blocksView());
     },
 
-    async setRate(rate: number) {
-      // Applied from the next sentence on: the current one keeps its rate.
+    async setRate(rate: number, commit = true) {
       await storage.setPrefs({ rate });
+      if (pending) pending = { ...pending, options: { ...pending.options, rate } };
+      if (playing && !(await tts.setRate?.(rate)) && commit) {
+        // chrome.tts cannot change speed mid-utterance: restart the sentence.
+        const cursor = await storage.getCursor();
+        if (cursor) {
+          expectInterrupt = true;
+          pending = null;
+          await tts.stop();
+          await speakAt(cursor, await blocksView());
+          return;
+        }
+      }
       await publish();
     },
 
     async setVoice(lang: string, voiceName: string) {
+      // The picker shows the voices of the selected engine, so the choice is stored for it.
       const prefs = await storage.getPrefs();
-      await storage.setPrefs({ voiceByLang: { ...prefs.voiceByLang, [lang]: voiceName } });
+      const engine = prefs.ttsEngine;
+      if (engine === 'system') {
+        await storage.setPrefs({
+          voiceByLang: { ...prefs.voiceByLang, [lang]: voiceName },
+          voiceByEngine: { ...prefs.voiceByEngine, system: { ...prefs.voiceByEngine.system, [lang]: voiceName } },
+        });
+      } else {
+        const key = localVoiceKey(engine, lang);
+        await storage.setPrefs({
+          voiceByEngine: { ...prefs.voiceByEngine, [engine]: { ...prefs.voiceByEngine[engine], [key]: voiceName } },
+        });
+      }
+      await publish();
+    },
+
+    async setTtsEngine(engine: TtsEngineId) {
+      if (playing) {
+        expectInterrupt = true;
+        pending = null;
+        playing = false;
+        await tts.stop();
+      }
+      await storage.setPrefs({ ttsEngine: engine });
       await publish();
     },
 
@@ -202,7 +268,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
         expectInterrupt = true;
         pending = null;
         playing = false;
-        tts.stop();
+        await tts.stop();
       }
       await storage.setCursor(repositioned);
       await publish();
@@ -217,7 +283,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
           const options = pending.options;
           pending = rest.length > 0 ? { chunks: rest, options } : null;
           if (next !== undefined) {
-            await tts.speak(next, options);
+            await safeSpeak(next, options);
             return;
           }
         }
@@ -244,7 +310,7 @@ export function createEngine({ tts, storage, broadcast }: EngineDeps): Engine {
     },
 
     async getState() {
-      return { playing, cursor: await storage.getCursor(), error };
+      return { playing, cursor: await storage.getCursor(), error, tts: getTtsStatus?.() };
     },
   };
 }

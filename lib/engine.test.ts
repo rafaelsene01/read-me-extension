@@ -37,8 +37,15 @@ function harness(blocks: Block[] = sampleBlocks()) {
     prefs: {
       rate: 1.0,
       targetLang: 'pt-BR',
+      ttsEngine: 'system' as const,
       voiceByLang: {} as Record<string, string>,
-      activeTab: 'original',
+      voiceByEngine: {
+        system: {} as Record<string, string>,
+        kokoro: {} as Record<string, string>,
+        supertonic: {} as Record<string, string>,
+      },
+      activeTab: 'original' as const,
+      favoriteVoices: [] as string[],
     } as Prefs,
   };
 
@@ -60,7 +67,7 @@ function harness(blocks: Block[] = sampleBlocks()) {
 
   const engine: Engine = createEngine({
     tts: {
-      speak: (text, options) => {
+      speak: async (text, options) => {
         speakCalls.push({ text, options, cursorAtSpeak: store.cursor });
       },
       stop,
@@ -71,7 +78,7 @@ function harness(blocks: Block[] = sampleBlocks()) {
     },
   });
 
-  return { engine, store, speakCalls, stop, states };
+  return { engine, store, storage, speakCalls, stop, states };
 }
 
 const cursorOf = (blockId: string, paraIndex: number, sentIndex: number): Cursor => ({
@@ -220,6 +227,54 @@ describe('tts failures', () => {
 
     expect((await h.engine.getState()).error).toBeNull();
   });
+
+  it('treats a rejected speak like an error event, keeping the cursor', async () => {
+    await h.engine.play();
+    const failing: Engine = createEngine({
+      tts: {
+        speak: async () => {
+          throw new Error('Engine neural ainda não disponível nesta versão');
+        },
+        stop: h.stop,
+      },
+      storage: h.storage,
+      broadcast: () => {},
+    });
+    await failing.play();
+
+    const state = await failing.getState();
+    expect(state.playing).toBe(false);
+    expect(state.error).toBe('Engine neural ainda não disponível nesta versão');
+    expect(state.cursor).toEqual(cursorOf('a', 0, 0));
+  });
+});
+
+describe('engine selection', () => {
+  it('persists the selected engine', async () => {
+    await h.engine.setTtsEngine('kokoro');
+
+    expect(h.store.prefs.ttsEngine).toBe('kokoro');
+  });
+
+  it('stops playback when switching engines but keeps the cursor', async () => {
+    await h.engine.play();
+    await h.engine.onTtsEvent({ type: 'end' });
+
+    await h.engine.setTtsEngine('supertonic');
+    await h.engine.onTtsEvent({ type: 'interrupted' });
+
+    expect(h.stop).toHaveBeenCalled();
+    expect(h.store.prefs.ttsEngine).toBe('supertonic');
+    expect(h.store.cursor).toEqual(cursorOf('a', 0, 1));
+    expect((await h.engine.getState()).playing).toBe(false);
+  });
+
+  it('just persists the engine while paused', async () => {
+    await h.engine.setTtsEngine('kokoro');
+
+    expect(h.stop).not.toHaveBeenCalled();
+    expect((await h.engine.getState()).playing).toBe(false);
+  });
 });
 
 describe('preferences', () => {
@@ -229,19 +284,61 @@ describe('preferences', () => {
     expect(h.store.prefs.rate).toBe(1.75);
   });
 
-  it('applies a new rate from the next sentence on, not the current one', async () => {
+  it('restarts the current sentence at the new rate when the engine cannot change it live', async () => {
     await h.engine.play();
 
     await h.engine.setRate(2.0);
-    await h.engine.onTtsEvent({ type: 'end' });
 
-    expect(h.speakCalls.map((c) => c.options.rate)).toEqual([1.0, 2.0]);
+    expect(h.stop).toHaveBeenCalled();
+    expect(h.speakCalls.map((c) => [c.text, c.options.rate])).toEqual([
+      ['a0.', 1.0],
+      ['a0.', 2.0],
+    ]);
+    // Our own stop must not surface as an error.
+    await h.engine.onTtsEvent({ type: 'interrupted' });
+    expect((await h.engine.getState()).error).toBeNull();
+  });
+
+  it('does not restart mid-gesture (slider still being dragged)', async () => {
+    await h.engine.play();
+
+    await h.engine.setRate(2.0, false);
+
+    expect(h.speakCalls).toHaveLength(1);
+    expect(h.store.prefs.rate).toBe(2.0);
+  });
+
+  it('changes speed in place when the engine supports it, without restarting', async () => {
+    const setRate = vi.fn(async () => true);
+    const live: Engine = createEngine({
+      tts: { speak: async () => {}, stop: h.stop, setRate },
+      storage: h.storage,
+      broadcast: () => {},
+    });
+    await live.play();
+
+    await live.setRate(1.5);
+
+    expect(setRate).toHaveBeenCalledWith(1.5);
+    expect(h.stop).not.toHaveBeenCalled();
   });
 
   it('persists a manual voice choice per language', async () => {
     await h.engine.setVoice('pt-BR', 'Luciana');
 
     expect(h.store.prefs.voiceByLang).toEqual({ 'pt-BR': 'Luciana' });
+    expect(h.store.prefs.voiceByEngine.system).toEqual({ 'pt-BR': 'Luciana' });
+  });
+
+  it('stores a neural voice under the selected engine, leaving system voices alone', async () => {
+    await h.engine.setTtsEngine('kokoro');
+    await h.engine.setVoice('pt-BR', 'pm_alex');
+    await h.engine.setTtsEngine('supertonic');
+    await h.engine.setVoice('pt-BR', 'M2');
+
+    expect(h.store.prefs.voiceByEngine.kokoro).toEqual({ pt: 'pm_alex' });
+    expect(h.store.prefs.voiceByEngine.supertonic).toEqual({ '*': 'M2' });
+    expect(h.store.prefs.voiceByLang).toEqual({});
   });
 
   it('speaks with the manual voice stored for the block language', async () => {

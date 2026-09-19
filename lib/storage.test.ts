@@ -141,6 +141,42 @@ describe('prefs', () => {
     expect(prefs.voiceByLang).toEqual({});
   });
 
+  it('defaults to the system engine with empty per-engine voice maps', async () => {
+    const prefs = await getPrefs();
+
+    expect(prefs.ttsEngine).toBe('system');
+    expect(prefs.voiceByEngine).toEqual({ system: {}, kokoro: {}, supertonic: {} });
+  });
+
+  it('migrates legacy prefs that predate ttsEngine and voiceByEngine', async () => {
+    // A stored pref object shaped like the version before local engines.
+    await fakeBrowser.storage.local.set({
+      prefs: { rate: 1.5, targetLang: 'pt-BR', voiceByLang: { 'pt-BR': 'Luciana' }, activeTab: 'translation' },
+    });
+
+    const prefs = await getPrefs();
+
+    expect(prefs.rate).toBe(1.5);
+    expect(prefs.voiceByLang).toEqual({ 'pt-BR': 'Luciana' });
+    expect(prefs.ttsEngine).toBe('system');
+    expect(prefs.voiceByEngine).toEqual({ system: {}, kokoro: {}, supertonic: {} });
+    expect(prefs.favoriteVoices).toEqual([]);
+  });
+
+  it('fills missing slots when stored voiceByEngine is partial', async () => {
+    await fakeBrowser.storage.local.set({
+      prefs: { voiceByEngine: { kokoro: { pt: 'pf_dora' } } },
+    });
+
+    const prefs = await getPrefs();
+
+    expect(prefs.voiceByEngine).toEqual({
+      system: {},
+      kokoro: { pt: 'pf_dora' },
+      supertonic: {},
+    });
+  });
+
   it('persists a partial change and keeps the remaining defaults', async () => {
     await setPrefs({ rate: 1.75 });
 

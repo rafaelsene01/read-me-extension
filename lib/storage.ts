@@ -15,12 +15,19 @@ const blocksItem = storage.defineItem<Block[]>('local:blocks', { fallback: [] })
 const cursorItem = storage.defineItem<Cursor | null>('local:cursor', { fallback: null });
 const prefsItem = storage.defineItem<Partial<Prefs>>('local:prefs', { fallback: {} });
 
+function defaultVoiceByEngine(): Prefs['voiceByEngine'] {
+  return { system: {}, kokoro: {}, supertonic: {} };
+}
+
 function defaultPrefs(): Prefs {
   return {
     rate: 1.0,
     targetLang: navigator.language,
+    ttsEngine: 'system',
     voiceByLang: {},
+    voiceByEngine: defaultVoiceByEngine(),
     activeTab: 'original',
+    favoriteVoices: [],
   };
 }
 
@@ -60,7 +67,14 @@ export function clearBlocks(): Promise<SetResult> {
 }
 
 export async function getPrefs(): Promise<Prefs> {
-  return { ...defaultPrefs(), ...(await prefsItem.getValue()) };
+  const stored = await prefsItem.getValue();
+  return {
+    ...defaultPrefs(),
+    ...stored,
+    // Stored prefs from before voiceByEngine existed (or a partial update)
+    // must not leave any engine slot undefined.
+    voiceByEngine: { ...defaultVoiceByEngine(), ...(stored.voiceByEngine ?? {}) },
+  };
 }
 
 export async function setPrefs(patch: Partial<Prefs>): Promise<void> {

@@ -7,20 +7,24 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import TtsModelStatus, { useModelAvailability } from './TtsModelStatus';
+import TtsVoiceSelect, { type VoiceOption } from './TtsVoiceSelect';
 import { sendCommand } from '../lib/messages';
+import { ENGINE_IDS, getEngineDefinition, pickerVoices, pickLocalVoice } from '../lib/tts/registry';
+import type { TtsEngineId, TtsRuntimeStatus } from '../lib/tts/types';
 import { listVoices, pickVoice } from '../lib/voices';
 import type { Prefs, Voice } from '../lib/types';
 
 interface ControlsProps {
   playing: boolean;
   prefs: Prefs;
+  /** Model status of the selected neural engine, from the background. */
+  tts: TtsRuntimeStatus | null | undefined;
   /** Language of the original text of the active block. */
   lang: string;
   /** Language the active block is translated into. */
@@ -40,6 +44,7 @@ export function languageName(lang: string): string {
 export default function Controls({
   playing,
   prefs,
+  tts,
   lang,
   translationLang,
   empty,
@@ -53,8 +58,15 @@ export default function Controls({
   // The voice follows the tab being read. voiceByLang is keyed by language, so
   // a manual choice made on one tab survives switching to the other and back.
   const voiceLang = prefs.activeTab === 'translation' ? translationLang : lang;
+  const engine = prefs.ttsEngine;
   const voice = pickVoice(voices, voiceLang, prefs.voiceByLang);
-  const blocked = empty || voice === null;
+  const localVoices = engine === 'system' ? [] : pickerVoices(engine, voiceLang);
+  const localVoice =
+    engine === 'system' ? null : pickLocalVoice(engine, voiceLang, prefs.voiceByEngine[engine]);
+  // A neural voice reads only once its model is downloaded; the status below offers the download.
+  const model = useModelAvailability(engine, tts);
+  const blocked =
+    empty || (engine === 'system' ? voice === null : localVoice === null || !model.available);
 
   // Voices of the language being read first, then the rest alphabetically.
   const base = voiceLang.split('-')[0]!.toLowerCase();
@@ -64,10 +76,21 @@ export default function Controls({
         Number(!b.lang.toLowerCase().startsWith(base)) ||
       a.voiceName.localeCompare(b.voiceName),
   );
-  const groups = [
-    { label: 'Neste dispositivo', options: sorted.filter((option) => !option.remote) },
-    { label: 'Online', options: sorted.filter((option) => option.remote) },
-  ];
+  const voiceOptions: VoiceOption[] =
+    engine === 'system'
+      ? sorted.map((option) => ({
+          id: option.voiceName,
+          name: option.voiceName,
+          detail: option.lang,
+          group: option.remote ? 'Online' : 'Neste dispositivo',
+        }))
+      : localVoices.map((option) => ({
+          id: option.id,
+          name: option.name,
+          detail: option.lang === '*' ? option.id : option.lang,
+          group: option.lang === '*' ? 'Vozes' : languageName(option.lang),
+          ...(option.avatar ? { avatar: option.avatar } : {}),
+        }));
 
   return (
     <Card className="gap-4 py-4">
@@ -106,50 +129,66 @@ export default function Controls({
               max={3}
               step={0.1}
               value={[prefs.rate]}
+              // Live while dragging; the release lets chrome.tts restart the sentence.
               onValueChange={([rate]) => {
-                if (rate !== undefined) void sendCommand({ type: 'setRate', rate });
+                if (rate !== undefined) void sendCommand({ type: 'setRate', rate, commit: false });
+              }}
+              onValueCommit={([rate]) => {
+                if (rate !== undefined) void sendCommand({ type: 'setRate', rate, commit: true });
               }}
             />
           </div>
         </div>
 
-        <Select
-          disabled={voices.length === 0}
-          value={voice?.voiceName}
-          onValueChange={(voiceName) =>
-            void sendCommand({ type: 'setVoice', lang: voiceLang, voiceName })
-          }
-        >
-          <SelectTrigger aria-label="Voz" className="w-full">
-            <SelectValue placeholder="Voz" />
-          </SelectTrigger>
-          <SelectContent>
-            {groups.map(
-              ({ label, options }) =>
-                options.length > 0 && (
-                  <SelectGroup key={label}>
-                    <SelectLabel>{label}</SelectLabel>
-                    {options.map((option) => (
-                      <SelectItem key={option.voiceName} value={option.voiceName}>
-                        {option.voiceName} ({option.lang})
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ),
-            )}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-2">
+          <Select
+            value={engine}
+            onValueChange={(value) =>
+              void sendCommand({ type: 'setTtsEngine', engine: value as TtsEngineId })
+            }
+          >
+            <SelectTrigger aria-label="Motor de voz" className="w-full">
+              <SelectValue placeholder="Motor de voz" />
+            </SelectTrigger>
+            <SelectContent>
+              {ENGINE_IDS.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {getEngineDefinition(id).label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        {voices.length === 0 && (
+          <TtsVoiceSelect
+            engine={engine}
+            options={voiceOptions}
+            value={engine === 'system' ? voice?.voiceName : localVoice?.id}
+            favorites={prefs.favoriteVoices}
+            onChange={(voiceName) => void sendCommand({ type: 'setVoice', lang: voiceLang, voiceName })}
+          />
+        </div>
+
+        {engine !== 'system' && <TtsModelStatus engine={engine} model={model} />}
+
+        {engine === 'system' && voices.length === 0 && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>Nenhuma voz disponível neste navegador</AlertDescription>
           </Alert>
         )}
-        {voices.length > 0 && voice === null && (
+        {engine === 'system' && voices.length > 0 && voice === null && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>Sem voz instalada para {languageName(voiceLang)}</AlertDescription>
+          </Alert>
+        )}
+        {engine !== 'system' && localVoice === null && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>
+              {getEngineDefinition(engine).label} não tem voz de {languageName(voiceLang)}. Escolha
+              uma voz de outro idioma ou outro motor.
+            </AlertDescription>
           </Alert>
         )}
       </CardContent>

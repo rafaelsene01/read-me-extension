@@ -70,8 +70,9 @@ export default function BlockList({ blocks, cursor, activeTab, playing }: BlockL
   // cursor coordinates.
   const activeKey = cursor ? `${cursor.blockId}:${cursor.paraIndex}:${cursor.sentIndex}` : null;
 
+  // The sentence being read is pinned to the top of the scroll box.
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'center' });
+    activeRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }, [activeKey, activeTab]);
 
   return (
@@ -190,7 +191,7 @@ export default function BlockList({ blocks, cursor, activeTab, playing }: BlockL
                             })
                           }
                           className={cn(
-                            'cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
+                            'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
                             active ? 'bg-highlight' : 'hover:bg-muted',
                           )}
                         >

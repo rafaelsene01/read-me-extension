@@ -54,27 +54,31 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex min-h-screen flex-col gap-3 p-3 text-sm">
-        {state.error && (
-          <Alert variant="destructive">
-            <CircleAlert />
-            <AlertDescription>{state.error}</AlertDescription>
-          </Alert>
-        )}
+      {/* Controls stay put; only the text being read scrolls. */}
+      <div className="flex h-screen flex-col gap-3 p-3 text-sm">
+        <div className="flex shrink-0 flex-col gap-3">
+          {state.error && (
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
+          )}
 
-        <CaptureBar empty={empty} />
+          <CaptureBar empty={empty} />
 
-        {prefs && (
-          <Controls
-            playing={state.playing}
-            prefs={prefs}
-            lang={activeLang}
-            translationLang={translationLang}
-            empty={empty}
-          />
-        )}
+          {prefs && (
+            <Controls
+              playing={state.playing}
+              prefs={prefs}
+              tts={state.tts}
+              lang={activeLang}
+              translationLang={translationLang}
+              empty={empty}
+            />
+          )}
 
-        {prefs && <TranslatePanel blocks={blocks} prefs={prefs} />}
+          {prefs && <TranslatePanel blocks={blocks} prefs={prefs} />}
+        </div>
 
         {empty || !prefs ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
@@ -82,12 +86,15 @@ export default function App() {
             <p>Capture um texto para começar.</p>
           </div>
         ) : (
-          <BlockList
-            blocks={blocks}
-            cursor={state.cursor}
-            activeTab={prefs.activeTab}
-            playing={state.playing}
-          />
+          // Small inset so focus rings and card shadows are not clipped by the scroll box.
+          <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
+            <BlockList
+              blocks={blocks}
+              cursor={state.cursor}
+              activeTab={prefs.activeTab}
+              playing={state.playing}
+            />
+          </div>
         )}
       </div>
     </TooltipProvider>

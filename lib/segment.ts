@@ -29,7 +29,10 @@ export function segmentBlock(text: string, lang: string, blockId: string): Parag
 
 /**
  * Split a sentence longer than the speech engine limit into chunks of at most
- * `max` characters, breaking on whitespace so words stay intact.
+ * `max` characters. Engine-agnostic: chrome.tts passes its hard limit, the
+ * neural runtimes their per-inference size. Cuts after punctuation followed by
+ * a space when one sits in the last two thirds of the window, else on
+ * whitespace, so words, numbers ("1,5") and URLs stay intact.
  */
 export function chunkSentence(text: string, max: number): string[] {
   if (text.length <= max) return [text];
@@ -38,13 +41,21 @@ export function chunkSentence(text: string, max: number): string[] {
   let rest = text;
 
   while (rest.length > max) {
-    let cut = rest.lastIndexOf(' ', max);
-    // A single word longer than max leaves no break point: cut it hard.
-    if (cut <= 0) cut = max;
+    const cut = cutPoint(rest, max);
     chunks.push(rest.slice(0, cut).trim());
     rest = rest.slice(cut).trimStart();
   }
 
   if (rest.length > 0) chunks.push(rest);
   return chunks;
+}
+
+function cutPoint(text: string, max: number): number {
+  const window = text.slice(0, max + 1);
+  let afterPunctuation = -1;
+  for (const match of window.matchAll(/[.!?…:;,](?=\s)/g)) afterPunctuation = match.index + 1;
+  if (afterPunctuation > max / 3) return afterPunctuation;
+  const space = window.lastIndexOf(' ');
+  // A single word longer than max leaves no break point: cut it hard.
+  return space > 0 ? space : max;
 }
