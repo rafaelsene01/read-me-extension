@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CircleAlert, Pencil, X } from 'lucide-react';
+import { Check, CircleAlert, Languages, Pencil, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,8 @@ interface BlockListProps {
   activeTab: Prefs['activeTab'];
   /** Editing is locked while the reading is running. */
   playing: boolean;
+  /** Tailwind font-size class of the text; the documents page zooms with it. */
+  textSize?: string;
 }
 
 /** Paragraphs shown for the active tab; null when the block has no translation yet. */
@@ -36,7 +38,13 @@ function paragraphsFor(block: Block, activeTab: Prefs['activeTab']): Paragraph[]
   return block.translation?.paragraphs ?? null;
 }
 
-export default function BlockList({ blocks, cursor, activeTab, playing }: BlockListProps) {
+export default function BlockList({
+  blocks,
+  cursor,
+  activeTab,
+  playing,
+  textSize = 'text-[15px]',
+}: BlockListProps) {
   const activeRef = useRef<HTMLSpanElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,9 +107,15 @@ export default function BlockList({ blocks, cursor, activeTab, playing }: BlockL
                 disabled={playing}
                 onValueChange={(lang) => void persistLang(block, lang)}
               >
-                <SelectTrigger size="sm" aria-label="Idioma de origem" className="h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <SelectTrigger size="sm" aria-label="Idioma do texto" className="h-7 text-xs">
+                      <Languages />
+                      <SelectValue />
+                    </SelectTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Idioma do texto: define a voz da leitura e a origem da tradução</TooltipContent>
+                </Tooltip>
                 <SelectContent>
                   {(LANGS.includes(block.lang) ? LANGS : [block.lang, ...LANGS]).map((lang) => (
                     <SelectItem key={lang} value={lang}>
@@ -110,22 +124,39 @@ export default function BlockList({ blocks, cursor, activeTab, playing }: BlockL
                   ))}
                 </SelectContent>
               </Select>
-              {activeTab === 'original' && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Editar"
-                      disabled={playing || editingId === block.id}
-                      onClick={() => setEditingId(block.id)}
-                    >
-                      <Pencil />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Editar</TooltipContent>
-                </Tooltip>
-              )}
+              {activeTab === 'original' &&
+                (editingId === block.id ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="icon-sm"
+                        aria-label="Concluir edição"
+                        // Keep focus in the editor so its blur (which saves) runs on click, not before it.
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => (document.activeElement as HTMLElement | null)?.blur()}
+                      >
+                        <Check />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Concluir edição</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Editar"
+                        disabled={playing}
+                        onClick={() => setEditingId(block.id)}
+                      >
+                        <Pencil />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Editar</TooltipContent>
+                  </Tooltip>
+                ))}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -141,7 +172,7 @@ export default function BlockList({ blocks, cursor, activeTab, playing }: BlockL
               </Tooltip>
             </CardHeader>
 
-            <CardContent className="px-3 text-[15px] leading-relaxed">
+            <CardContent className={cn('px-3 leading-relaxed', textSize)}>
               {activeTab === 'translation' && isStale(block) && (
                 <Badge
                   role="status"

@@ -1,4 +1,5 @@
 import { storage } from 'wxt/utils/storage';
+import type { LibraryDocument } from './document';
 import type { Block, Cursor, Prefs } from './types';
 
 /**
@@ -14,6 +15,7 @@ export type AppendResult = SetResult | { ok: false; reason: 'full' };
 const blocksItem = storage.defineItem<Block[]>('local:blocks', { fallback: [] });
 const cursorItem = storage.defineItem<Cursor | null>('local:cursor', { fallback: null });
 const prefsItem = storage.defineItem<Partial<Prefs>>('local:prefs', { fallback: {} });
+const documentsItem = storage.defineItem<LibraryDocument[]>('local:documents', { fallback: [] });
 
 function defaultVoiceByEngine(): Prefs['voiceByEngine'] {
   return { system: {}, kokoro: {}, supertonic: {} };
@@ -64,6 +66,23 @@ export async function removeBlock(id: string): Promise<SetResult> {
 
 export function clearBlocks(): Promise<SetResult> {
   return setBlocks([]);
+}
+
+/** Most recently saved first. */
+export async function getDocuments(): Promise<LibraryDocument[]> {
+  return (await documentsItem.getValue()).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/** Replaces the document with the same id, or adds it. */
+export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
+  const docs = (await documentsItem.getValue()).filter((d) => d.id !== doc.id);
+  try {
+    await documentsItem.setValue([...docs, doc]);
+  } catch {
+    // Quota error: nothing was written, so the previous library still stands.
+    return { ok: false, reason: 'quota' };
+  }
+  return { ok: true };
 }
 
 export async function getPrefs(): Promise<Prefs> {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpenText, CircleAlert, MousePointerClick, Trash2 } from 'lucide-react';
+import { BookOpenText, CircleAlert, FileText, MousePointerClick, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -98,6 +98,23 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
           <MousePointerClick />
           Escolher elemento
         </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Documentos"
+              onClick={() =>
+                void chrome.tabs
+                  .create({ url: chrome.runtime.getURL('/documents.html') })
+                  .catch(() => {})
+              }
+            >
+              <FileText />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Documentos</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

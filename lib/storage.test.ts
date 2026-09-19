@@ -5,12 +5,15 @@ import {
   clearBlocks,
   getBlocks,
   getCursor,
+  getDocuments,
   getPrefs,
   removeBlock,
+  saveDocument,
   setBlocks,
   setCursor,
   setPrefs,
 } from './storage';
+import { toLibraryDocument } from './document';
 import type { Block } from './types';
 
 function block(id: string, text: string): Block {
@@ -194,5 +197,48 @@ describe('cursor', () => {
     await setCursor({ blockId: 'a', paraIndex: 1, sentIndex: 2 });
 
     expect(await getCursor()).toEqual({ blockId: 'a', paraIndex: 1, sentIndex: 2 });
+  });
+});
+
+describe('library documents', () => {
+  it('saves a document with the first block id and title, the blocks and the save date', async () => {
+    const blocks = [block('a', 'um'), block('b', 'dois')];
+
+    const result = await saveDocument(toLibraryDocument(blocks, 100));
+
+    expect(result).toEqual({ ok: true });
+    expect(await getDocuments()).toEqual([{ id: 'a', name: 'a', blocks, savedAt: 100 }]);
+  });
+
+  it('updates the document with the same id instead of adding another', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+
+    await saveDocument(toLibraryDocument([block('a', 'um'), block('b', 'dois')], 200));
+
+    const docs = await getDocuments();
+    expect(docs).toHaveLength(1);
+    expect(docs[0]!.savedAt).toBe(200);
+    expect(docs[0]!.blocks.map((b) => b.id)).toEqual(['a', 'b']);
+  });
+
+  it('lists documents from the most recent to the oldest', async () => {
+    await saveDocument(toLibraryDocument([block('b', 'dois')], 200));
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    await saveDocument(toLibraryDocument([block('c', 'tres')], 300));
+
+    expect((await getDocuments()).map((d) => d.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('returns reason "quota" and keeps the previous library when the write fails', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    const set = vi
+      .spyOn(fakeBrowser.storage.local, 'set')
+      .mockRejectedValue(new Error('QUOTA_BYTES quota exceeded'));
+
+    const result = await saveDocument(toLibraryDocument([block('b', 'dois')], 200));
+    set.mockRestore();
+
+    expect(result).toEqual({ ok: false, reason: 'quota' });
+    expect((await getDocuments()).map((d) => d.id)).toEqual(['a']);
   });
 });

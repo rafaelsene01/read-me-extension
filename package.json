@@ -12,11 +12,13 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@fontsource-variable/inter": "^5.3.0",
     "@huggingface/transformers": "3.8.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "cn": "^0.3.0",
     "espeak-ng": "1.0.2",
     "lucide-react": "^1.47.0",
     "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",

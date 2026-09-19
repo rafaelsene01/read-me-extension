@@ -30,6 +30,8 @@ interface ControlsProps {
   /** Language the active block is translated into. */
   translationLang: string;
   empty: boolean;
+  /** Estimated reading time at the current speed, shown under the speed slider. */
+  readingTime?: string | null;
 }
 
 export function languageName(lang: string): string {
@@ -48,6 +50,7 @@ export default function Controls({
   lang,
   translationLang,
   empty,
+  readingTime,
 }: ControlsProps) {
   const [voices, setVoices] = useState<Voice[]>([]);
 
@@ -137,10 +140,14 @@ export default function Controls({
                 if (rate !== undefined) void sendCommand({ type: 'setRate', rate, commit: true });
               }}
             />
+            {readingTime && (
+              <span className="text-xs text-muted-foreground">Leitura estimada: {readingTime}</span>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
+        {/* Side by side where there is room (documents page); stacked in the narrow side panel. */}
+        <div className="grid gap-2 sm:grid-cols-2">
           <Select
             value={engine}
             onValueChange={(value) =>

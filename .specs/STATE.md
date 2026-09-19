@@ -73,6 +73,42 @@ Stack: WXT 0.21 + React 19 + TypeScript, alvo Chromium (Chrome/Edge/Brave).
 - **Decisão**: Vitest cobre a lógica pura em `lib/`; entrypoints e componentes React são verificados manualmente com passos escritos no `Done when`.
 - **Razão**: Montar runner de DOM e e2e de extensão custa mais do que entrega nesta v1; toda lógica não trivial foi empurrada para `lib/`.
 
+### AD-012 — Documentos compartilham o buffer do painel
+
+- **Status**: active
+- **Decisão**: A página Documentos (`/documents.html`) grava o documento aberto em `local:blocks`; toda entrada passa por um diálogo único (Cancelar / Substituir / Salvar e substituir) quando o buffer não está vazio.
+- **Razão**: Council unânime. Foco por clique, tradução, controles e engine funcionam sem mudança; um segundo buffer exigiria trocar a fonte do engine e refatorar `BlockList`/`TranslatePanel`.
+
+### AD-013 — MP3 sintetizado num worker da própria página
+
+- **Status**: active
+- **Decisão**: A exportação cria seu próprio worker (`tts-worker.ts`) e codifica MP3 em streaming com `@breezystack/lamejs`; só motores neurais.
+- **Razão**: O host do offscreen cancela qualquer síntese anterior ao receber outra, então exportar por ele interromperia a leitura; PCM não atravessa `runtime.sendMessage`; `chrome.tts` não expõe áudio.
+
+### AD-014 — EPUB vira capítulos no modelo de frases
+
+- **Status**: active
+- **Decisão**: Cada item do spine vira um `Block`; a formatação é só o tipo de cada parágrafo (`Block.kinds`: `h1`..`h6`, `p`, `quote`, `li`) renderizado com Tailwind. CSS, fontes e imagens do livro ficam fora.
+- **Razão**: Council unânime. Seek, destaque, tradução, engine e MP3 dependem de `paragraphs`/`sentences`; CSS do livro é não confiável e conflita com o tema.
+
+### AD-015 — Página = capítulo, só para livros
+
+- **Status**: active
+- **Decisão**: A página Documentos mostra um bloco por vez quando o buffer tem algum bloco com `kinds`; a página segue o cursor quando ele muda de bloco. Demais buffers continuam empilhados.
+- **Razão**: Council (unânime em página = capítulo; 3 de 4 em só livros). Paginação por tela exigiria recalcular a cada zoom e quebraria o auto-scroll.
+
+### AD-016 — `fflate` + `DOMParser` para EPUB; `happy-dom` só nos testes
+
+- **Status**: active
+- **Decisão**: `unzipSync` do `fflate` com filtro de entradas, XML/XHTML por `DOMParser` (XHTML inválido cai para `text/html`); `lib/epub.test.ts` roda em `happy-dom`.
+- **Razão**: Council unânime: parser zip à mão erra em data descriptors, zip64 e nomes; o `unzip` assíncrono do `fflate` usa workers por blob URL, recusados pela CSP.
+
+### AD-017 — Importar EPUB salva e abre; sem limite de 500k
+
+- **Status**: active
+- **Decisão**: A importação grava o livro (com capa em data URL) em `local:documents` e abre pelo `useReplaceGuard`. `MAX_BUFFER_CHARS` não se aplica ao EPUB. `saveDocument` preserva a capa existente.
+- **Razão**: Council 3 de 4 (dissent: só salvar) e unânime no limite: romances passam de 500k, `unlimitedStorage` já existe e `setBlocks` não aplica o limite.
+
 ---
 
 ## Handoff
