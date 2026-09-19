@@ -18,7 +18,7 @@ function block(overrides: Partial<Block> = {}): Block {
 /** Fake Translator global; `create` resolves only when the test releases it. */
 function fakeTranslator(translated = 'Olá.') {
   const listeners: Array<(event: { loaded: number }) => void> = [];
-  const translate = vi.fn(async () => translated);
+  const translate = vi.fn(async (_text: string) => translated);
   const create = vi.fn(async (options: { monitor?: (m: unknown) => void }) => {
     options.monitor?.({
       addEventListener: (_type: string, listener: (event: { loaded: number }) => void) => {
@@ -89,6 +89,18 @@ describe('translateBlock', () => {
     expect(await translateBlock(block(), 'pt', () => {})).toBe('Olá a todos.');
   });
 
+  it('translates each paragraph on its own, keeping one line per paragraph', async () => {
+    const api = fakeTranslator();
+    api.translate.mockImplementation(async (line: string) => `[${line}]`);
+    const translated = await translateBlock(
+      block({ text: 'Titulo\nPrimeiro.\nSegundo.' }),
+      'pt',
+      () => {},
+    );
+    expect(translated).toBe('[Titulo]\n[Primeiro.]\n[Segundo.]');
+    expect(api.translate).toHaveBeenCalledTimes(3);
+  });
+
   it('forwards download progress reported by the monitor', async () => {
     fakeTranslator();
     const progress: number[] = [];
@@ -105,7 +117,7 @@ describe('translateBlock', () => {
         translation: {
           target: 'pt',
           text: 'Olá guardado.',
-          paragraphs: [],
+          paragraphs: [{ id: 'b1#t:p0', sentences: [{ id: 'b1#t:p0:s0', text: 'Olá guardado.' }] }],
           sourceTextHash: hashText(source),
         },
       }),

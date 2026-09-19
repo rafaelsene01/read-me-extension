@@ -13,6 +13,9 @@ export const COMMAND_TYPES = [
 
 export type CommandType = (typeof COMMAND_TYPES)[number];
 
+/** selection: what the user selected; picker: one clicked element; page: the whole page. */
+export type CaptureMode = 'selection' | 'picker' | 'page';
+
 export type Command =
   | { type: 'play' }
   | { type: 'pause' }
@@ -20,7 +23,7 @@ export type Command =
   | { type: 'seek'; cursor: Cursor }
   | { type: 'setRate'; rate: number }
   | { type: 'setVoice'; lang: string; voiceName: string }
-  | { type: 'capture'; mode: 'selection' | 'picker' }
+  | { type: 'capture'; mode: CaptureMode }
   | { type: 'state' };
 
 export interface StateMessage {

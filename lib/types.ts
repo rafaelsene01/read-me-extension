@@ -56,6 +56,6 @@ export interface PlaybackState {
 export interface Voice {
   voiceName: string;
   lang: string;
-  /** Only remote: false voices are usable; remote voices synthesize off-device. */
+  /** True for online voices, which synthesize on the vendor's servers. */
   remote: boolean;
 }

@@ -1,4 +1,5 @@
 import { extractFromElement, extractFromSelection, isInaccessible, pageLang } from '../lib/extract';
+import { extractFromPage } from '../lib/page';
 import { isCommand } from '../lib/messages';
 
 /** What a capture sends back to whoever asked for it. */
@@ -101,6 +102,10 @@ export default defineContentScript({
       if (message.mode === 'selection') {
         // Selection mode reads what is already selected; no overlay.
         sendResponse(payload(extractFromSelection(document)));
+        return false;
+      }
+      if (message.mode === 'page') {
+        sendResponse(payload(extractFromPage(document)));
         return false;
       }
 

@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react';
+import { CircleAlert, Pause, Play, Square } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { sendCommand } from '../lib/messages';
-import { listLocalVoices, pickVoice } from '../lib/voices';
+import { listVoices, pickVoice } from '../lib/voices';
 import type { Prefs, Voice } from '../lib/types';
 
 interface ControlsProps {
@@ -32,7 +47,7 @@ export default function Controls({
   const [voices, setVoices] = useState<Voice[]>([]);
 
   useEffect(() => {
-    void listLocalVoices().then(setVoices);
+    void listVoices().then(setVoices);
   }, []);
 
   // The voice follows the tab being read. voiceByLang is keyed by language, so
@@ -41,64 +56,103 @@ export default function Controls({
   const voice = pickVoice(voices, voiceLang, prefs.voiceByLang);
   const blocked = empty || voice === null;
 
+  // Voices of the language being read first, then the rest alphabetically.
+  const base = voiceLang.split('-')[0]!.toLowerCase();
+  const sorted = [...voices].sort(
+    (a, b) =>
+      Number(!a.lang.toLowerCase().startsWith(base)) -
+        Number(!b.lang.toLowerCase().startsWith(base)) ||
+      a.voiceName.localeCompare(b.voiceName),
+  );
+  const groups = [
+    { label: 'Neste dispositivo', options: sorted.filter((option) => !option.remote) },
+    { label: 'Online', options: sorted.filter((option) => option.remote) },
+  ];
+
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <button
-          type="button"
-          disabled={blocked}
-          onClick={() => void sendCommand({ type: playing ? 'pause' : 'play' })}
-        >
-          {playing ? 'Pausar' : 'Ler'}
-        </button>
-        <button type="button" disabled={blocked} onClick={() => void sendCommand({ type: 'stop' })}>
-          Parar
-        </button>
-      </div>
+    <Card className="gap-4 py-4">
+      <CardContent className="flex flex-col gap-4 px-4">
+        <div className="flex items-center gap-3">
+          <Button
+            size="icon-lg"
+            className="size-12 rounded-full shadow-md"
+            aria-label={playing ? 'Pausar' : 'Ler'}
+            disabled={blocked}
+            onClick={() => void sendCommand({ type: playing ? 'pause' : 'play' })}
+          >
+            {playing ? <Pause className="size-5" /> : <Play className="size-5 translate-x-px" />}
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="rounded-full"
+            aria-label="Parar"
+            disabled={blocked}
+            onClick={() => void sendCommand({ type: 'stop' })}
+          >
+            <Square className="size-3.5" />
+          </Button>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        Velocidade
-        <input
-          type="range"
-          min={0.5}
-          max={3}
-          step={0.1}
-          value={prefs.rate}
-          onChange={(event) =>
-            void sendCommand({ type: 'setRate', rate: Number(event.target.value) })
-          }
-        />
-        <span>{prefs.rate.toFixed(1)}x</span>
-      </label>
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span id="rate-label">Velocidade</span>
+              <Badge variant="secondary" className="tabular-nums">
+                {prefs.rate.toFixed(1)}x
+              </Badge>
+            </div>
+            <Slider
+              aria-labelledby="rate-label"
+              min={0.5}
+              max={3}
+              step={0.1}
+              value={[prefs.rate]}
+              onValueChange={([rate]) => {
+                if (rate !== undefined) void sendCommand({ type: 'setRate', rate });
+              }}
+            />
+          </div>
+        </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        Voz
-        <select
-          style={{ flex: 1 }}
+        <Select
           disabled={voices.length === 0}
-          value={voice?.voiceName ?? ''}
-          onChange={(event) =>
-            void sendCommand({ type: 'setVoice', lang: voiceLang, voiceName: event.target.value })
+          value={voice?.voiceName}
+          onValueChange={(voiceName) =>
+            void sendCommand({ type: 'setVoice', lang: voiceLang, voiceName })
           }
         >
-          {voices.map((option) => (
-            <option key={option.voiceName} value={option.voiceName}>
-              {option.voiceName} ({option.lang})
-            </option>
-          ))}
-        </select>
-      </label>
+          <SelectTrigger aria-label="Voz" className="w-full">
+            <SelectValue placeholder="Voz" />
+          </SelectTrigger>
+          <SelectContent>
+            {groups.map(
+              ({ label, options }) =>
+                options.length > 0 && (
+                  <SelectGroup key={label}>
+                    <SelectLabel>{label}</SelectLabel>
+                    {options.map((option) => (
+                      <SelectItem key={option.voiceName} value={option.voiceName}>
+                        {option.voiceName} ({option.lang})
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ),
+            )}
+          </SelectContent>
+        </Select>
 
-      {voices.length === 0 && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          Nenhuma voz local instalada neste sistema
-        </p>
-      )}
-      {voices.length > 0 && voice === null && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          Sem voz instalada para {languageName(voiceLang)}
-        </p>
-      )}
-    </section>
+        {voices.length === 0 && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>Nenhuma voz disponível neste navegador</AlertDescription>
+          </Alert>
+        )}
+        {voices.length > 0 && voice === null && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>Sem voz instalada para {languageName(voiceLang)}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }

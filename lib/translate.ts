@@ -67,7 +67,11 @@ export function isStale(block: Block): boolean {
 
 /**
  * Translated text for a block, reusing the stored translation when it still
- * matches the text and the target.
+ * matches the text, the target and the paragraph count.
+ *
+ * Each line (one paragraph) is translated on its own and the lines are joined
+ * back, so the translation keeps the original structure paragraph for
+ * paragraph. Translating the whole text at once lets the model merge lines.
  *
  * Not an async function: `create` must run in the same task as the click that
  * asked for the translation, or the browser refuses the language-pack download.
@@ -79,7 +83,13 @@ export function translateBlock(
   onProgress: (loaded: number) => void,
 ): Promise<string> {
   const cached = block.translation;
-  if (cached && cached.target === target && cached.sourceTextHash === hashText(block.text)) {
+  if (
+    cached &&
+    cached.target === target &&
+    cached.sourceTextHash === hashText(block.text) &&
+    // Translations stored before per-paragraph translation may have merged lines.
+    cached.paragraphs.length === block.paragraphs.length
+  ) {
     return Promise.resolve(cached.text);
   }
 
@@ -94,5 +104,13 @@ export function translateBlock(
         monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
       },
     })
-    .then((instance) => instance.translate(block.text));
+    .then((instance) =>
+      Promise.all(
+        block.text.split('\n').map((line) =>
+          // A line break inside a translated line would shift every paragraph after it.
+          line.trim() ? instance.translate(line).then((text) => text.replace(/\s*\n\s*/g, ' ')) : line,
+        ),
+      ),
+    )
+    .then((lines) => lines.join('\n'));
 }

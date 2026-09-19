@@ -1,3 +1,4 @@
+import { captureTab, isCapturable } from '../lib/capture';
 import { createEngine } from '../lib/engine';
 import { broadcastState, onCommand } from '../lib/messages';
 import * as store from '../lib/storage';
@@ -6,6 +7,24 @@ export default defineBackground(() => {
   // Clicking the toolbar icon opens the side panel.
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
     // Not supported on this browser build; the panel still opens from the menu.
+  });
+
+  // Right-click on a selection sends it to the reader.
+  chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.create({
+      id: 'capture-selection',
+      title: 'Enviar para ReadMe',
+      contexts: ['selection'],
+    });
+  });
+
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== 'capture-selection' || tab?.id === undefined) return;
+    // sidePanel.open needs the user gesture, so it runs before any await.
+    void chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+    // The click grants activeTab, so no host permission prompt is needed.
+    // ponytail: failures are silent here; surface them in the panel if users miss them.
+    if (tab.url && isCapturable(tab.url)) void captureTab(tab.id, 'selection');
   });
 
   // SPEC_DEVIATION: design.md names `chrome.tts.onEvent`.

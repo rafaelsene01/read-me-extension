@@ -1,5 +1,5 @@
 import type { CapturePayload } from '../entrypoints/content';
-import type { Command } from './messages';
+import type { CaptureMode, Command } from './messages';
 import { segmentBlock } from './segment';
 import { appendBlock } from './storage';
 import type { Block } from './types';
@@ -59,7 +59,7 @@ export function originPattern(url: string): string {
 export async function requestAndCapture(
   tabId: number,
   url: string,
-  mode: 'selection' | 'picker',
+  mode: CaptureMode,
 ): Promise<CaptureResult> {
   if (!isCapturable(url)) return { ok: false, reason: 'unsupported' };
 
@@ -67,7 +67,18 @@ export async function requestAndCapture(
   // granted origins resolve true without prompting.
   const granted = await chrome.permissions.request({ origins: [originPattern(url)] });
   if (!granted) return { ok: false, reason: 'denied' };
+  return captureTab(tabId, mode);
+}
 
+/**
+ * Injects the content script and stores what it captures. The caller must
+ * already hold access to the tab: a host permission, or activeTab granted by a
+ * user gesture such as the context menu.
+ */
+export async function captureTab(
+  tabId: number,
+  mode: CaptureMode,
+): Promise<CaptureResult> {
   let payload: CapturePayload | null;
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: [CONTENT_SCRIPT] });

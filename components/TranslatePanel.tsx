@@ -1,4 +1,16 @@
 import { useEffect, useState } from 'react';
+import { CircleAlert, Languages } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
 import { segmentBlock } from '../lib/segment';
@@ -70,60 +82,56 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
       .finally(() => setProgress(null));
   }
 
+  const alerts = [
+    !supported && 'Tradução não suportada neste navegador',
+    unavailablePair && 'Par de idiomas não disponível',
+    error,
+  ].filter((text): text is string => Boolean(text));
+
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={{ display: 'flex', gap: '4px' }}>
-        {(['original', 'translation'] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            aria-pressed={prefs.activeTab === tab}
-            onClick={() => startTransition(() => void setPrefs({ activeTab: tab }))}
-            style={{
-              flex: 1,
-              fontWeight: prefs.activeTab === tab ? 600 : 400,
-              viewTransitionName: 'tts-tabs',
-            }}
-          >
-            {tab === 'original' ? 'Original' : 'Tradução'}
-          </button>
-        ))}
-      </div>
+    <section className="flex flex-col gap-2">
+      <Tabs
+        value={prefs.activeTab}
+        onValueChange={(tab) =>
+          startTransition(() => void setPrefs({ activeTab: tab as Prefs['activeTab'] }))
+        }
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="original">Original</TabsTrigger>
+          <TabsTrigger value="translation">Tradução</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <select
-          style={{ flex: 1 }}
+      <div className="flex items-center gap-2">
+        <Select
           value={prefs.targetLang}
-          onChange={(event) => void setPrefs({ targetLang: event.target.value })}
+          onValueChange={(targetLang) => void setPrefs({ targetLang })}
         >
-          {LANGS.map((lang) => (
-            <option key={lang} value={lang}>
-              {languageName(lang)}
-            </option>
-          ))}
-        </select>
-        <button type="button" disabled={blocked} onClick={translate}>
+          <SelectTrigger aria-label="Idioma de destino" className="flex-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LANGS.map((lang) => (
+              <SelectItem key={lang} value={lang}>
+                {languageName(lang)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" disabled={blocked} onClick={translate}>
+          <Languages />
           Traduzir
-        </button>
+        </Button>
       </div>
 
-      {progress !== null && <progress value={progress} max={1} style={{ width: '100%' }} />}
+      {progress !== null && <Progress value={progress * 100} />}
 
-      {!supported && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          Tradução não suportada neste navegador
-        </p>
-      )}
-      {unavailablePair && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          Par de idiomas não disponível
-        </p>
-      )}
-      {error && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {alerts.map((text) => (
+        <Alert key={text} variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{text}</AlertDescription>
+        </Alert>
+      ))}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-# TTS Reader
+# ReadMe
 
 Extensão de navegador que captura o texto que você escolhe em qualquer página,
 lê em voz alta com destaque acompanhando a leitura e traduz sob demanda. Tudo
@@ -15,7 +15,7 @@ texto para fora da máquina.
 
 ```bash
 pnpm install
-pnpm zip          # gera .output/tts-reader-<versão>-chrome.zip
+pnpm zip          # gera .output/readme-<versão>-chrome.zip
 ```
 
 1. Descompacte o `.zip` gerado em `.output/`.

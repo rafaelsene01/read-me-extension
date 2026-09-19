@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
+import { BookOpenText, CircleAlert, MousePointerClick, Trash2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { requestAndCapture, type CaptureFailure } from '../lib/capture';
-import { sendCommand } from '../lib/messages';
+import { sendCommand, type CaptureMode } from '../lib/messages';
 import { clearBlocks } from '../lib/storage';
 
 export const MESSAGES: Record<CaptureFailure, string | null> = {
@@ -41,12 +45,12 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
     };
   }, []);
 
-  async function run(tabId: number, url: string, mode: 'selection' | 'picker'): Promise<void> {
+  async function run(tabId: number, url: string, mode: CaptureMode): Promise<void> {
     const result = await requestAndCapture(tabId, url, mode);
     if (!result.ok) setMessage(MESSAGES[result.reason]);
   }
 
-  function capture(mode: 'selection' | 'picker'): void {
+  function capture(mode: CaptureMode): void {
     setMessage(null);
     if (!tab) {
       setMessage(MESSAGES.unsupported);
@@ -84,23 +88,37 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
   }
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <button type="button" onClick={() => capture('selection')}>
-          Capturar seleção
-        </button>
-        <button type="button" onClick={() => capture('picker')}>
+    <section className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <Button className="flex-1" onClick={() => capture('page')}>
+          <BookOpenText />
+          Ler página
+        </Button>
+        <Button variant="outline" className="flex-1" onClick={() => capture('picker')}>
+          <MousePointerClick />
           Escolher elemento
-        </button>
-        <button type="button" disabled={empty} onClick={() => void clear()}>
-          Limpar
-        </button>
+        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Limpar"
+              disabled={empty}
+              onClick={() => void clear()}
+            >
+              <Trash2 />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Limpar</TooltipContent>
+        </Tooltip>
       </div>
 
       {message && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          {message}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       )}
     </section>
   );

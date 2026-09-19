@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extractFromElement, extractFromSelection, isInaccessible, pageLang } from './extract';
+import {
+  extractFromElement,
+  extractFromSelection,
+  isInaccessible,
+  pageLang,
+} from './extract';
 
 function docWithSelection(text: string | null): Document {
   return {

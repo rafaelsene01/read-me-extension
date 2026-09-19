@@ -1,4 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { CircleAlert, Pencil, X } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
 import { LANGS } from './TranslatePanel';
@@ -61,121 +75,134 @@ export default function BlockList({ blocks, cursor, activeTab, playing }: BlockL
   }, [activeKey, activeTab]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div className="flex flex-col gap-3">
       {error && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       {blocks.map((block) => {
         const paragraphs = paragraphsFor(block, activeTab);
         return (
-          <article key={block.id} style={{ borderTop: '1px solid #e5e7eb', paddingTop: '8px' }}>
-            <header
-              style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}
-            >
+          <Card key={block.id} className="gap-3 py-3">
+            <CardHeader className="flex items-center gap-1 px-3">
               <span
                 title={block.sourceUrl}
-                style={{
-                  flex: 1,
-                  color: '#6b7280',
-                  fontSize: '12px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
+                className="flex-1 truncate text-xs text-muted-foreground"
               >
                 {block.sourceUrl}
               </span>
-              <select
-                aria-label="Idioma de origem"
+              <Select
                 value={block.lang}
                 disabled={playing}
-                onChange={(event) => void persistLang(block, event.target.value)}
+                onValueChange={(lang) => void persistLang(block, lang)}
               >
-                {(LANGS.includes(block.lang) ? LANGS : [block.lang, ...LANGS]).map((lang) => (
-                  <option key={lang} value={lang}>
-                    {languageName(lang)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger size="sm" aria-label="Idioma de origem" className="h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(LANGS.includes(block.lang) ? LANGS : [block.lang, ...LANGS]).map((lang) => (
+                    <SelectItem key={lang} value={lang}>
+                      {languageName(lang)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {activeTab === 'original' && (
-                <button
-                  type="button"
-                  disabled={playing || editingId === block.id}
-                  onClick={() => setEditingId(block.id)}
-                >
-                  Editar
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Editar"
+                      disabled={playing || editingId === block.id}
+                      onClick={() => setEditingId(block.id)}
+                    >
+                      <Pencil />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Editar</TooltipContent>
+                </Tooltip>
               )}
-              <button type="button" onClick={() => void removeBlock(block.id)}>
-                Remover
-              </button>
-            </header>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Remover"
+                    onClick={() => void removeBlock(block.id)}
+                  >
+                    <X />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Remover</TooltipContent>
+              </Tooltip>
+            </CardHeader>
 
-            {activeTab === 'translation' && isStale(block) && (
-              <p role="status" style={{ color: '#b45309', margin: '0 0 8px', fontSize: '12px' }}>
-                Tradução desatualizada
-              </p>
-            )}
+            <CardContent className="px-3 text-[15px] leading-relaxed">
+              {activeTab === 'translation' && isStale(block) && (
+                <Badge
+                  role="status"
+                  variant="outline"
+                  className="mb-2 border-amber-500/50 text-amber-600 dark:text-amber-400"
+                >
+                  Tradução desatualizada
+                </Badge>
+              )}
 
-            {editingId === block.id ? (
-              <div
-                // Uncontrolled on purpose: a controlled contenteditable destroys
-                // the caret and the undo stack on every re-render.
-                contentEditable="plaintext-only"
-                suppressContentEditableWarning
-                ref={(element) => {
-                  if (element && document.activeElement !== element) element.focus();
-                }}
-                onBlur={(event) => {
-                  const text = event.currentTarget.innerText;
-                  setEditingId(null);
-                  void persist(block, text);
-                }}
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  border: '1px solid #2563eb',
-                  borderRadius: '2px',
-                  padding: '4px',
-                }}
-              >
-                {block.text}
-              </div>
-            ) : paragraphs === null ? (
-              <p style={{ color: '#6b7280', margin: 0 }}>Bloco ainda não traduzido.</p>
-            ) : (
-              paragraphs.map((paragraph, paraIndex) => (
-                <p key={paragraph.id} style={{ margin: '0 0 8px' }}>
-                  {paragraph.sentences.map((sentence, sentIndex) => {
-                    const active =
-                      block.id === cursor?.blockId &&
-                      paraIndex === cursor.paraIndex &&
-                      sentIndex === cursor.sentIndex;
-                    return (
-                      <span
-                        key={sentence.id}
-                        ref={active ? activeRef : null}
-                        onClick={() =>
-                          void sendCommand({
-                            type: 'seek',
-                            cursor: { blockId: block.id, paraIndex, sentIndex },
-                          })
-                        }
-                        style={{
-                          background: active ? '#fef08a' : 'transparent',
-                          borderRadius: '2px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {sentence.text}{' '}
-                      </span>
-                    );
-                  })}
-                </p>
-              ))
-            )}
-          </article>
+              {editingId === block.id ? (
+                <div
+                  // Uncontrolled on purpose: a controlled contenteditable destroys
+                  // the caret and the undo stack on every re-render.
+                  contentEditable="plaintext-only"
+                  suppressContentEditableWarning
+                  ref={(element) => {
+                    if (element && document.activeElement !== element) element.focus();
+                  }}
+                  onBlur={(event) => {
+                    const text = event.currentTarget.innerText;
+                    setEditingId(null);
+                    void persist(block, text);
+                  }}
+                  className="rounded-md border border-ring p-2 whitespace-pre-wrap outline-none ring-[3px] ring-ring/30"
+                >
+                  {block.text}
+                </div>
+              ) : paragraphs === null ? (
+                <p className="text-muted-foreground">Bloco ainda não traduzido.</p>
+              ) : (
+                paragraphs.map((paragraph, paraIndex) => (
+                  <p key={paragraph.id} className="mb-2 last:mb-0">
+                    {paragraph.sentences.map((sentence, sentIndex) => {
+                      const active =
+                        block.id === cursor?.blockId &&
+                        paraIndex === cursor.paraIndex &&
+                        sentIndex === cursor.sentIndex;
+                      return (
+                        <span
+                          key={sentence.id}
+                          ref={active ? activeRef : null}
+                          onClick={() =>
+                            void sendCommand({
+                              type: 'seek',
+                              cursor: { blockId: block.id, paraIndex, sentIndex },
+                            })
+                          }
+                          className={cn(
+                            'cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
+                            active ? 'bg-highlight' : 'hover:bg-muted',
+                          )}
+                        >
+                          {sentence.text}{' '}
+                        </span>
+                      );
+                    })}
+                  </p>
+                ))
+              )}
+            </CardContent>
+          </Card>
         );
       })}
     </div>

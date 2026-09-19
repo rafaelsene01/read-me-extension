@@ -2,6 +2,11 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "strict": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    // Repeated from .wxt/tsconfig.json so the shadcn CLI can resolve the alias.
+    "paths": {
+      "@/*": ["./*"]
+    }
   }
 }

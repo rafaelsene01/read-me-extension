@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { CircleAlert, TextSelect } from 'lucide-react';
 import BlockList from '../../components/BlockList';
 import CaptureBar from '../../components/CaptureBar';
 import Controls from '../../components/Controls';
 import TranslatePanel from '../../components/TranslatePanel';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { sendCommand, type StateMessage } from '../../lib/messages';
 import { getBlocks, getPrefs } from '../../lib/storage';
 import type { Block, PlaybackState, Prefs } from '../../lib/types';
@@ -50,47 +53,43 @@ export default function App() {
   const translationLang = activeBlock?.translation?.target ?? prefs?.targetLang ?? activeLang;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        padding: '12px',
-        font: '14px/1.5 system-ui, sans-serif',
-      }}
-    >
-      <h1 style={{ font: '600 15px system-ui, sans-serif', margin: 0 }}>TTS Reader</h1>
+    <TooltipProvider>
+      <div className="flex min-h-screen flex-col gap-3 p-3 text-sm">
+        {state.error && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>{state.error}</AlertDescription>
+          </Alert>
+        )}
 
-      {state.error && (
-        <p role="alert" style={{ color: '#b91c1c', margin: 0 }}>
-          {state.error}
-        </p>
-      )}
+        <CaptureBar empty={empty} />
 
-      <CaptureBar empty={empty} />
+        {prefs && (
+          <Controls
+            playing={state.playing}
+            prefs={prefs}
+            lang={activeLang}
+            translationLang={translationLang}
+            empty={empty}
+          />
+        )}
 
-      {prefs && (
-        <Controls
-          playing={state.playing}
-          prefs={prefs}
-          lang={activeLang}
-          translationLang={translationLang}
-          empty={empty}
-        />
-      )}
+        {prefs && <TranslatePanel blocks={blocks} prefs={prefs} />}
 
-      {prefs && <TranslatePanel blocks={blocks} prefs={prefs} />}
-
-      {empty || !prefs ? (
-        <p style={{ color: '#6b7280', margin: 0 }}>Capture um texto para começar.</p>
-      ) : (
-        <BlockList
-          blocks={blocks}
-          cursor={state.cursor}
-          activeTab={prefs.activeTab}
-          playing={state.playing}
-        />
-      )}
-    </div>
+        {empty || !prefs ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
+            <TextSelect className="size-8 opacity-60" />
+            <p>Capture um texto para começar.</p>
+          </div>
+        ) : (
+          <BlockList
+            blocks={blocks}
+            cursor={state.cursor}
+            activeTab={prefs.activeTab}
+            playing={state.playing}
+          />
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
