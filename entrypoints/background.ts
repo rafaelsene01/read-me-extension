@@ -1,6 +1,6 @@
 import { captureTab, isCapturable } from '../lib/capture';
 import { createEngine, type Engine } from '../lib/engine';
-import { broadcastState, onCommand } from '../lib/messages';
+import { broadcastState, isReaderPage, onCommand } from '../lib/messages';
 import * as store from '../lib/storage';
 import { requestTranslation } from '../lib/translate';
 import { createLocalTtsClient } from '../lib/tts/client';
@@ -14,6 +14,16 @@ export default defineBackground(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
     // Not supported on this browser build; the panel still opens from the menu.
   });
+
+  // The extension's own page is the reader already: the panel would be a second
+  // copy of it side by side, so it is disabled on that tab (which also closes it
+  // when it is open). The page announces itself instead of the tab URL being
+  // matched here: reading `tab.url` needs the broad "tabs" permission, which
+  // this extension does not ask for.
+  function setPanel(tabId: number | undefined, enabled: boolean): void {
+    if (tabId === undefined) return;
+    void chrome.sidePanel.setOptions({ tabId, enabled }).catch(() => {});
+  }
 
   // Right-click on a selection sends it to the reader.
   chrome.runtime.onInstalled.addListener(() => {
@@ -72,9 +82,11 @@ export default defineBackground(() => {
     translate: requestTranslation,
   });
 
-  // Events coming back from the offscreen document.
-  chrome.runtime.onMessage.addListener((message: unknown) => {
+  // Events coming back from the offscreen document, and the reader page
+  // reporting whether it is the one in a given tab.
+  chrome.runtime.onMessage.addListener((message: unknown, sender) => {
     if (isLocalTtsEvent(message)) localClient.handleEvent(message);
+    if (isReaderPage(message)) setPanel(sender.tab?.id, !message.open);
     return false;
   });
 

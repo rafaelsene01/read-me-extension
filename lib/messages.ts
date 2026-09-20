@@ -60,6 +60,31 @@ export function onCommand(handler: CommandHandler): void {
   });
 }
 
+/**
+ * The reader page telling the background which tab it occupies, so the side
+ * panel can be turned off there. It carries no tab id: the receiver reads it
+ * from the sender, which needs no permission.
+ */
+export interface ReaderPageMessage {
+  type: 'readerPage';
+  /** False once the page is leaving the tab, which frees the panel again. */
+  open: boolean;
+}
+
+export function isReaderPage(value: unknown): value is ReaderPageMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === 'readerPage' &&
+    typeof (value as { open?: unknown }).open === 'boolean'
+  );
+}
+
+/** Announces this tab as the reader page; failures mean no background yet. */
+export function announceReaderPage(open: boolean): void {
+  void chrome.runtime.sendMessage({ type: 'readerPage', open }).catch(() => {});
+}
+
 /** Pushes state to the side panel. Resolves even when no panel is open to receive it. */
 export async function broadcastState(state: PlaybackState): Promise<void> {
   const message: StateMessage = { type: 'playbackState', state };

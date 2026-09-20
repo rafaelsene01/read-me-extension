@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpenText, CircleAlert, FileText, MousePointerClick, Trash2 } from 'lucide-react';
+import { BookOpenText, CircleAlert, ExternalLink, MousePointerClick, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -103,17 +103,20 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
             <Button
               variant="outline"
               size="icon"
-              aria-label="Documentos"
+              aria-label="Abrir o site da extensão"
               onClick={() =>
                 void chrome.tabs
                   .create({ url: chrome.runtime.getURL('/documents.html') })
+                  // The panel is disabled on that page anyway: closing it here
+                  // saves the user a second click to tidy up.
+                  .then(() => window.close())
                   .catch(() => {})
               }
             >
-              <FileText />
+              <ExternalLink />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Documentos</TooltipContent>
+          <TooltipContent>Abrir o site da extensão</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>

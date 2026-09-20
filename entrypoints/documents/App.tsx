@@ -36,7 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { readingTime, toLibraryDocument } from '../../lib/document';
 import { applyLang } from '../../lib/edit';
-import { sendCommand } from '../../lib/messages';
+import { announceReaderPage, sendCommand } from '../../lib/messages';
 import { clearBlocks, saveDocument, setBlocks } from '../../lib/storage';
 import { cn } from '@/lib/utils';
 
@@ -59,11 +59,12 @@ export default function App() {
   const [page, setPage] = useState(0);
 
   useEffect(() => {
-    // This page is the reader here: the extension's side panel stays hidden on its tab.
-    void chrome.tabs.getCurrent().then((current) => {
-      if (current?.id === undefined) return;
-      void chrome.sidePanel.setOptions({ tabId: current.id, enabled: false }).catch(() => {});
-    });
+    // This page is the reader here: the extension's side panel stays hidden on
+    // its tab, and is freed again as soon as the tab goes somewhere else.
+    announceReaderPage(true);
+    const leave = (): void => announceReaderPage(false);
+    window.addEventListener('pagehide', leave);
+    return () => window.removeEventListener('pagehide', leave);
   }, []);
 
   // A new document starts at its first page. Declared before the cursor effect
