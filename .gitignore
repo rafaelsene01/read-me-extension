@@ -1,6 +1,7 @@
 node_modules
 .output
 .wxt
+store-assets/tools/
 stats.html
 *.log
 .DS_Store
