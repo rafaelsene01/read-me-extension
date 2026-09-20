@@ -328,8 +328,10 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
 
       {shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-          <Library className="size-8 opacity-60" />
-          <p>
+          <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
+            <Library className="size-5" />
+          </span>
+          <p className="font-serif text-base">
             {filtering
               ? 'Nenhum documento corresponde ao filtro.'
               : folder !== null
@@ -361,7 +363,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 >
                   {cover(doc, 'h-40 w-full')}
                   <span className="flex flex-col gap-1 p-3">
-                    <span className="truncate text-sm font-medium">{doc.name}</span>
+                    <span className="truncate font-serif text-sm font-medium">{doc.name}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
                         {documentKind(doc)}
@@ -391,7 +393,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 >
                   {cover(doc, 'h-16 w-12 rounded-sm')}
                   <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                    <span className="w-full truncate font-medium">{doc.name}</span>
+                    <span className="w-full truncate font-serif font-medium">{doc.name}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
                         {documentKind(doc)}

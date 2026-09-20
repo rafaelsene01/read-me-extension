@@ -69,8 +69,10 @@ export default function AudioList() {
   if (tracks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-        <FileAudio className="size-8 opacity-60" />
-        <p>Nenhum áudio gerado. Use o botão MP3 na barra de leitura.</p>
+        <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
+          <FileAudio className="size-5" />
+        </span>
+        <p className="font-serif text-base">Nenhum áudio gerado. Use o botão MP3 na barra de leitura.</p>
       </div>
     );
   }
@@ -80,7 +82,7 @@ export default function AudioList() {
       <ul className="flex flex-col gap-2">
         {tracks.map((track) => (
           <li key={track.id}>
-            <Card className="flex-row items-center gap-3 border p-3">
+            <Card className="flex-row items-center gap-3 border bg-card p-3">
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="truncate font-medium">{track.name}</span>
                 <span className="text-xs text-muted-foreground">

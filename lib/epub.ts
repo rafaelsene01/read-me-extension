@@ -28,7 +28,7 @@ function firstByLocalName(root: Document | Element, local: string): Element | nu
 }
 
 /** Match by localName so namespace-prefixed tags (`opf:item`, `enc:CipherReference`) are found. */
-function allByLocalName(root: Document | Element, local: string): Element[] {
+export function allByLocalName(root: Document | Element, local: string): Element[] {
   return [...root.getElementsByTagName('*')].filter((el) => el.localName === local);
 }
 

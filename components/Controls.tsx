@@ -106,12 +106,12 @@ export default function Controls({
         }));
 
   return (
-    <Card className="gap-4 py-4">
+    <Card className="gap-4 border bg-card py-4">
       <CardContent className="flex flex-col gap-4 px-4">
         <div className="flex items-center gap-3">
           <Button
             size="icon-lg"
-            className="size-12 rounded-full shadow-md"
+            className={cn('size-12 rounded-full', playing && 'animate-playing')}
             aria-label={playing ? 'Pausar' : 'Ler'}
             disabled={blocked}
             onClick={() => void sendCommand({ type: playing ? 'pause' : 'play' })}

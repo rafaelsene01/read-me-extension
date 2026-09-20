@@ -45,8 +45,10 @@ export default function App() {
 
         {empty || !prefs ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-            <TextSelect className="size-8 opacity-60" />
-            <p>Capture um texto para começar.</p>
+            <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
+              <TextSelect className="size-5" />
+            </span>
+            <p className="font-serif text-base">Capture um texto para começar.</p>
           </div>
         ) : (
           // Small inset so focus rings and card shadows are not clipped by the scroll box.

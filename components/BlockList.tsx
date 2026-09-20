@@ -141,7 +141,7 @@ export default function BlockList({
                   })
                 }
                 className={cn(
-                  'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
+                  'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors duration-200',
                   active
                     ? 'bg-highlight text-highlight-foreground'
                     : 'hover:bg-highlight/40',
@@ -182,7 +182,7 @@ export default function BlockList({
         // change it.
         const bare = bookView && !!block.kinds;
         return (
-          <Card key={block.id} className={cn('py-3', !bare && 'gap-3')}>
+          <Card key={block.id} className={cn('border bg-card py-3', !bare && 'gap-3')}>
             <CardHeader className={cn('flex items-center gap-1 px-3', bare && 'hidden')}>
               <span
                 title={block.sourceUrl}
@@ -273,7 +273,7 @@ export default function BlockList({
                 <Badge
                   role="status"
                   variant="outline"
-                  className="mb-2 border-amber-500/50 text-amber-600 dark:text-amber-400"
+                  className="mb-2 border-warning/50 text-warning-foreground"
                 >
                   Tradução desatualizada
                 </Badge>

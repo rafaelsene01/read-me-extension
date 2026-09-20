@@ -21,9 +21,12 @@ export type FileFailure = 'unsupported' | 'empty' | 'tooLarge';
 
 export type FileResult = { ok: true; block: Block } | { ok: false; reason: FileFailure };
 
-/** Turns a .txt or .md file into a reader block; Markdown syntax is stripped first. */
+/**
+ * Turns the text of a .txt, .md, .doc or .docx file into a reader block;
+ * Markdown syntax is stripped first. A Word file arrives already extracted.
+ */
 export function fileToBlock(name: string, raw: string, lang: string): FileResult {
-  const ext = name.toLowerCase().match(/\.(txt|md)$/)?.[1];
+  const ext = name.toLowerCase().match(/\.(txt|md|docx?)$/)?.[1];
   if (!ext) return { ok: false, reason: 'unsupported' };
 
   const text = ext === 'md' ? stripMarkdown(raw) : raw;
@@ -53,7 +56,10 @@ export function documentKind(doc: LibraryDocument): string {
   const block = doc.blocks[0];
   if (block?.pdf) return 'PDF';
   if (block?.epub) return 'EPUB';
-  return block?.sourceTitle.match(/\.(txt|md)$/i)?.[1]?.toUpperCase() ?? 'Texto';
+  const ext = block?.sourceTitle.match(/\.(txt|md|docx?)$/i)?.[1]?.toUpperCase();
+  if (!ext) return 'Texto';
+  // .doc and .docx are one kind in the library filter, as in the import menu.
+  return ext === 'DOCX' ? 'DOC' : ext;
 }
 
 /** The name a text document carries until it is given one. */

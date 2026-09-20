@@ -18,6 +18,7 @@ import {
   type FileFailure,
   type LibraryDocument,
 } from "../lib/document";
+import { parseDocx, type DocxFailure } from "../lib/docx";
 import { parseEpub, type EpubFailure } from "../lib/epub";
 import { parsePdf, type PdfFailure } from "../lib/pdf";
 import { saveDocument } from "../lib/storage";
@@ -34,6 +35,12 @@ const EPUB_MESSAGES: Record<EpubFailure, string> = {
   empty: "Arquivo vazio",
 };
 
+const DOCX_MESSAGES: Record<DocxFailure, string> = {
+  invalid: "DOC inválido",
+  legacy: "DOC do Word 97-2003 não é suportado: salve como .docx",
+  empty: "Documento sem texto",
+};
+
 const PDF_MESSAGES: Record<PdfFailure, string> = {
   invalid: "PDF inválido",
   encrypted: "PDF protegido por senha não é suportado",
@@ -41,7 +48,7 @@ const PDF_MESSAGES: Record<PdfFailure, string> = {
 };
 
 /** Everything the importer reads, behind one file picker. */
-const ACCEPT = ".pdf,.epub,.txt,.md";
+const ACCEPT = ".pdf,.epub,.doc,.docx,.txt,.md";
 
 interface NewDocumentMenuProps {
   /** Called once the imported document is in the buffer. */
@@ -106,6 +113,17 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
       return;
     }
 
+    // Both extensions are picked, but only the .docx zip can be read.
+    if (extension === "doc" || extension === "docx") {
+      const result = parseDocx(new Uint8Array(await file.arrayBuffer()));
+      if (!result.ok) {
+        setMessage(DOCX_MESSAGES[result.reason]);
+        return;
+      }
+      await openText(file.name, result.text);
+      return;
+    }
+
     await openText(file.name, await file.text());
   }
 
@@ -138,7 +156,7 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
             <FileText />
             <div className="flex flex-1 flex-col gap-0.5 text-left">
               <span className="font-medium">Documento</span>
-              <span className="text-xs text-muted-foreground">PDF, EPUB, TXT, MD</span>
+              <span className="text-xs text-muted-foreground">PDF, EPUB, DOC, TXT, MD</span>
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>

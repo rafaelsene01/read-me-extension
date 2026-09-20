@@ -1,66 +1,76 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/inter';
+@import '@fontsource-variable/newsreader';
 
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.985 0.002 286);
-  --foreground: oklch(0.21 0.006 286);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.006 286);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.006 286);
-  --primary: oklch(0.541 0.247 293);
+  /* Warm paper and ink: the neutral axis carries a faint warm hue so the
+     panel feels like a sheet of paper instead of bare gray. */
+  --background: oklch(0.975 0.004 90);
+  --foreground: oklch(0.23 0.012 90);
+  --card: oklch(0.995 0.002 90);
+  --card-foreground: oklch(0.23 0.012 90);
+  --popover: oklch(0.998 0.001 90);
+  --popover-foreground: oklch(0.23 0.012 90);
+  --primary: oklch(0.5 0.21 293);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.003 286);
-  --secondary-foreground: oklch(0.21 0.006 286);
-  --muted: oklch(0.967 0.003 286);
-  --muted-foreground: oklch(0.552 0.016 286);
-  --accent: oklch(0.943 0.029 295);
-  --accent-foreground: oklch(0.38 0.18 293);
+  --secondary: oklch(0.962 0.005 90);
+  --secondary-foreground: oklch(0.23 0.012 90);
+  --muted: oklch(0.962 0.005 90);
+  --muted-foreground: oklch(0.52 0.015 90);
+  --accent: oklch(0.938 0.028 293);
+  --accent-foreground: oklch(0.4 0.17 293);
   --destructive: oklch(0.577 0.245 27);
-  --border: oklch(0.92 0.004 286);
-  --input: oklch(0.92 0.004 286);
-  --ring: oklch(0.541 0.247 293);
+  --warning: oklch(0.78 0.15 75);
+  --warning-foreground: oklch(0.35 0.09 75);
+  --border: oklch(0.91 0.006 90);
+  --input: oklch(0.91 0.006 90);
+  --ring: oklch(0.5 0.21 293);
   /* The sentence being read, as a marker pen: the same bright wash in both
      themes, over the card and over the light sheet of a book or a PDF page,
      so it always carries dark text. */
-  --highlight: oklch(0.9 0.17 95);
-  --highlight-foreground: oklch(0.21 0.006 286);
+  --highlight: oklch(0.885 0.155 92);
+  --highlight-foreground: oklch(0.23 0.012 90);
   /* Book pages stay a light sheet in both themes. */
   --paper: oklch(0.995 0.003 95);
-  --paper-foreground: oklch(0.21 0.006 286);
+  --paper-foreground: oklch(0.23 0.012 90);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.16 0.005 286);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.21 0.006 286);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.21 0.006 286);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.702 0.183 293);
-    --primary-foreground: oklch(0.16 0.005 286);
-    --secondary: oklch(0.274 0.006 286);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.274 0.006 286);
-    --muted-foreground: oklch(0.705 0.015 286);
-    --accent: oklch(0.3 0.08 293);
-    --accent-foreground: oklch(0.9 0.06 295);
+    /* Warm ink: deep neutral with the same faint warm hue as light mode. */
+    --background: oklch(0.17 0.009 85);
+    --foreground: oklch(0.975 0.004 85);
+    --card: oklch(0.22 0.01 85);
+    --card-foreground: oklch(0.975 0.004 85);
+    --popover: oklch(0.225 0.01 85);
+    --popover-foreground: oklch(0.975 0.004 85);
+    --primary: oklch(0.73 0.165 293);
+    --primary-foreground: oklch(0.17 0.009 85);
+    --secondary: oklch(0.28 0.011 85);
+    --secondary-foreground: oklch(0.975 0.004 85);
+    --muted: oklch(0.28 0.011 85);
+    --muted-foreground: oklch(0.71 0.014 85);
+    --accent: oklch(0.31 0.07 293);
+    --accent-foreground: oklch(0.9 0.06 293);
     --destructive: oklch(0.704 0.191 22);
+    --warning: oklch(0.83 0.14 80);
+    --warning-foreground: oklch(0.88 0.09 85);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.702 0.183 293);
-    --highlight: oklch(0.85 0.17 95);
-    --highlight-foreground: oklch(0.21 0.006 286);
+    --ring: oklch(0.73 0.165 293);
+    --highlight: oklch(0.84 0.16 92);
+    --highlight-foreground: oklch(0.23 0.012 90);
     --paper: oklch(0.985 0.004 95);
-    --paper-foreground: oklch(0.21 0.006 286);
+    --paper-foreground: oklch(0.23 0.012 90);
   }
 }
 
 @theme inline {
+  --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-serif: 'Newsreader Variable', Georgia, serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -80,6 +90,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -87,6 +99,22 @@
   --color-highlight-foreground: var(--highlight-foreground);
   --color-paper: var(--paper);
   --color-paper-foreground: var(--paper-foreground);
+}
+
+@theme {
+  /* One authored motion: a soft halo breathing around the play button while
+     speech is running. Exponential ease-out, from an already-visible state. */
+  --animate-playing: rm-playing 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+
+  @keyframes rm-playing {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 35%, transparent);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 0 12px transparent;
+    }
+  }
 }
 
 @layer base {
@@ -115,6 +143,11 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+    font-family: var(--font-sans);
+  }
+
+  /* Selection carries the marker-pen wash, echoed from the reading surface. */
+  ::selection {
+    background: color-mix(in oklch, var(--highlight) 55%, transparent);
   }
 }

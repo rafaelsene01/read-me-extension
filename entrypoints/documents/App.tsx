@@ -160,7 +160,7 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen text-sm">
         <aside className="flex h-screen w-60 shrink-0 flex-col gap-4 border-r bg-muted/40 p-4">
-          <h1 className="px-2 text-base font-semibold">Documentos</h1>
+          <h1 className="px-2 font-serif text-base font-semibold">Documentos</h1>
           <NewDocumentMenu
             onOpened={() => setTab('file')}
             onCompose={() => {
@@ -203,7 +203,7 @@ export default function App() {
                         className="h-auto flex-1 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0 md:text-lg"
                       />
                     ) : (
-                      <h2 className="flex-1 truncate text-lg font-semibold">
+                      <h2 className="flex-1 truncate font-serif text-xl font-semibold tracking-tight">
                         {blocks[0]!.sourceTitle}
                       </h2>
                     )}
@@ -281,8 +281,10 @@ export default function App() {
                 )}
                 {empty || !prefs ? (
                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-                    <FileText className="size-8 opacity-60" />
-                    <p>Importe um documento para começar.</p>
+                    <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
+                      <FileText className="size-5" />
+                    </span>
+                    <p className="font-serif text-base">Importe um documento para começar.</p>
                   </div>
                 ) : composing ? (
                   <Textarea
