@@ -1,5 +1,6 @@
 import { storage } from 'wxt/utils/storage';
 import type { LibraryDocument } from './document';
+import type { LocalEngineId } from './tts/types';
 import type { Block, Cursor, Prefs } from './types';
 
 /**
@@ -37,6 +38,7 @@ function defaultPrefs(): Prefs {
     voiceByEngine: defaultVoiceByEngine(),
     activeTab: 'original',
     favoriteVoices: [],
+    modelUsedAt: {},
   };
 }
 
@@ -206,6 +208,16 @@ export async function getPrefs(): Promise<Prefs> {
 
 export async function setPrefs(patch: Partial<Prefs>): Promise<void> {
   await prefsItem.setValue({ ...(await prefsItem.getValue()), ...patch });
+}
+
+/**
+ * Records that a neural model was used now, which is what keeps it from being
+ * swept out of the cache. Called when a voice is picked and when a reading
+ * starts, not per sentence: a write per sentence would buy nothing.
+ */
+export async function touchModel(engine: LocalEngineId): Promise<void> {
+  const prefs = await getPrefs();
+  await setPrefs({ modelUsedAt: { ...prefs.modelUsedAt, [engine]: Date.now() } });
 }
 
 export function getCursor(): Promise<Cursor | null> {

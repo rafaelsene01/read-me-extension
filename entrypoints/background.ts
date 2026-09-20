@@ -4,11 +4,15 @@ import { broadcastState, isReaderPage, onCommand } from '../lib/messages';
 import * as store from '../lib/storage';
 import { requestTranslation } from '../lib/translate';
 import { createLocalTtsClient } from '../lib/tts/client';
+import { deleteModel, isModelCached, staleModels } from '../lib/tts/model-cache';
 import { isLocalTtsEvent } from '../lib/tts/protocol';
 import { createTtsRouter, pickLocalVoice } from '../lib/tts/registry';
 import { createSystemTts } from '../lib/tts/system';
 import type { TtsEngineId } from '../lib/tts/types';
 import type { Prefs } from '../lib/types';
+
+/** Commands that mean the selected voice is being used right now. */
+const USES_VOICE = new Set(['play', 'setVoice', 'setTtsEngine', 'downloadTtsModel']);
 
 export default defineBackground(() => {
   // Clicking the toolbar icon opens the side panel.
@@ -110,6 +114,11 @@ export default defineBackground(() => {
         break;
       case 'setVoice':
         await engine.setVoice(command.lang, command.voiceName, command.engine);
+        // A neural voice is unusable until its model is there: picking one
+        // starts the download instead of waiting for a second click.
+        if (command.engine && command.engine !== 'system') {
+          void localClient.prepare(command.engine);
+        }
         break;
       case 'setTtsEngine':
         await engine.setTtsEngine(command.engine);
@@ -122,8 +131,27 @@ export default defineBackground(() => {
         // 'capture' is wired in T12; 'state' only needs the reply below.
         break;
     }
+
+    // The commands that mean "this voice is in use": the sweep below reads this.
+    if (USES_VOICE.has(command.type)) {
+      const { ttsEngine } = await store.getPrefs();
+      if (ttsEngine !== 'system') await store.touchModel(ttsEngine);
+    }
     return engine.getState();
   });
+
+  /**
+   * Models nobody has used for a fortnight are dropped, so the cache does not
+   * grow by hundreds of megabytes per engine that was tried once. Starred
+   * voices and the selected engine are never swept. Runs once per wake of the
+   * service worker, which is often enough for a fortnightly rule.
+   */
+  void (async () => {
+    const prefs = await store.getPrefs();
+    for (const engine of staleModels(Date.now(), prefs)) {
+      if (await isModelCached(engine)) await deleteModel(engine);
+    }
+  })();
 
   // A removed or edited block can leave the cursor dangling.
   chrome.storage.local.onChanged.addListener((changes) => {

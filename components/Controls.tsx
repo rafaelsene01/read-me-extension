@@ -126,6 +126,7 @@ export default function Controls({
             options={voiceOptions}
             value={selectedVoiceId ? voiceKey(engine, selectedVoiceId) : undefined}
             favorites={prefs.favoriteVoices}
+            loading={model.runtime?.status === 'downloading' || model.runtime?.status === 'loading'}
             onChange={(option) =>
               void sendCommand({
                 type: 'setVoice',

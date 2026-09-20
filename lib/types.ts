@@ -1,4 +1,4 @@
-import type { TtsEngineId } from './tts/types';
+import type { LocalEngineId, TtsEngineId } from './tts/types';
 import type { TtsRuntimeStatus } from './tts/types';
 
 export interface Sentence {
@@ -66,6 +66,11 @@ export interface Prefs {
   activeTab: 'original' | 'translation';
   /** Starred voices, as `${engine}:${voiceId}`; listed first in the picker. */
   favoriteVoices: string[];
+  /**
+   * When each neural model was last used, by engine. A model nobody has used
+   * for a fortnight is dropped from the cache; see staleModels.
+   */
+  modelUsedAt: Partial<Record<LocalEngineId, number>>;
 }
 
 export interface PlaybackState {

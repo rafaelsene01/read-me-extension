@@ -30,6 +30,8 @@ export interface VoiceOption {
 
 interface TtsVoiceSelectProps {
   options: VoiceOption[];
+  /** The model of the selected voice is downloading or starting up. */
+  loading?: boolean;
   /** Selected voice as `${engine}:${id}`; ids repeat across engines. */
   value: string | undefined;
   favorites: string[];
@@ -67,7 +69,13 @@ function VoiceAvatar({ option, className }: { option: VoiceOption; className?: s
  * favorites live in prefs as `${engine}:${id}`, which is also how the selected
  * voice is identified.
  */
-export default function TtsVoiceSelect({ options, value, favorites, onChange }: TtsVoiceSelectProps) {
+export default function TtsVoiceSelect({
+  options,
+  value,
+  favorites,
+  loading = false,
+  onChange,
+}: TtsVoiceSelectProps) {
   const [open, setOpen] = useState(false);
   const selected = options.find((option) => voiceKey(option.engine, option.id) === value);
 
@@ -98,14 +106,29 @@ export default function TtsVoiceSelect({ options, value, favorites, onChange }: 
           role="combobox"
           aria-expanded={open}
           aria-label={selected ? `Voz: ${selected.name}` : 'Voz'}
-          title={selected ? `${selected.name} · ${selected.detail}` : 'Voz'}
+          aria-busy={loading}
+          title={
+            loading
+              ? `Preparando ${selected?.name ?? 'a voz'}…`
+              : selected
+                ? `${selected.name} · ${selected.detail}`
+                : 'Voz'
+          }
           disabled={options.length === 0}
-          className="size-10 shrink-0 rounded-full p-0"
+          className="relative size-10 shrink-0 rounded-full p-0"
         >
           {selected ? (
-            <VoiceAvatar option={selected} className="size-8" />
+            <VoiceAvatar option={selected} className={cn('size-8', loading && 'opacity-50')} />
           ) : (
             <ChevronsUpDown className="opacity-50" />
+          )}
+          {/* The model is being fetched or started: a ring turning around the
+              face of the voice, right where the user is looking. */}
+          {loading && (
+            <span
+              aria-hidden
+              className="absolute inset-0 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
+            />
           )}
         </Button>
       </PopoverTrigger>

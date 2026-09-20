@@ -1,5 +1,5 @@
 import { hfUrl, KOKORO_MODEL, SUPERTONIC_MODEL } from './registry';
-import type { LocalEngineId } from './types';
+import type { LocalEngineId, TtsEngineId } from './types';
 
 export const MODELS = { kokoro: KOKORO_MODEL, supertonic: SUPERTONIC_MODEL } as const;
 
@@ -50,6 +50,33 @@ export async function getModelStatus(engine: LocalEngineId): Promise<ModelInstal
     sizeBytes: await getModelSize(engine),
     revision: MODELS[engine].revision,
   };
+}
+
+/** A model untouched for this long is dropped from the cache. */
+export const UNUSED_DAYS = 14;
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Which downloaded models have gone cold. A model is dropped only when it has
+ * not been used for `UNUSED_DAYS`, is not the engine currently selected, and no
+ * voice of it is starred — a favourite is the user saying to keep it, so it is
+ * never swept, however long it sits.
+ *
+ * A model with no recorded use is treated as used now: it was downloaded before
+ * this bookkeeping existed, and deleting it on sight would be a nasty surprise.
+ */
+export function staleModels(now: number, prefs: {
+  ttsEngine: TtsEngineId;
+  modelUsedAt: Partial<Record<LocalEngineId, number>>;
+  favoriteVoices: string[];
+}): LocalEngineId[] {
+  return LOCAL_ENGINES.filter((engine) => {
+    if (engine === prefs.ttsEngine) return false;
+    if (prefs.favoriteVoices.some((voice) => voice.startsWith(`${engine}:`))) return false;
+    const usedAt = prefs.modelUsedAt[engine];
+    return usedAt !== undefined && now - usedAt > UNUSED_DAYS * DAY;
+  });
 }
 
 export async function deleteModel(engine: LocalEngineId): Promise<void> {
