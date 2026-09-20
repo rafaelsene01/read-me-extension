@@ -36,6 +36,8 @@ export interface Block {
   kinds?: ParagraphKind[];
   /** EPUB chapters only: the book's document id and the chapter's path inside the zip. */
   epub?: { book: string; path: string };
+  /** PDF pages only: the file's document id and the page number (1-based). */
+  pdf?: { book: string; page: number };
   translation?: Translation;
   createdAt: number;
 }
@@ -47,7 +49,7 @@ export interface Cursor {
 }
 
 export interface Prefs {
-  /** 0.5 .. 3.0, default 1.0. */
+  /** 0.5 .. 2.0, default 1.0. */
   rate: number;
   /** Default navigator.language. */
   targetLang: string;

@@ -10,8 +10,10 @@ export interface LibraryDocument {
   name: string;
   /** Includes the translation, when there is one. */
   blocks: Block[];
-  /** Book cover as a data URL, when the document came from an EPUB. */
+  /** Cover as a data URL: the book's own, or the first page of a PDF. */
   cover?: string;
+  /** Name of the folder it was filed under; absent means the top level. */
+  folder?: string;
   savedAt: number;
 }
 
@@ -40,6 +42,33 @@ export function fileToBlock(name: string, raw: string, lang: string): FileResult
       paragraphs: segmentBlock(text, lang, id),
       createdAt: Date.now(),
     },
+  };
+}
+
+/**
+ * What the document was made from, for the library card: the format of an
+ * imported file, or "Texto" for a captured page, which has no file behind it.
+ */
+export function documentKind(doc: LibraryDocument): string {
+  const block = doc.blocks[0];
+  if (block?.pdf) return 'PDF';
+  if (block?.epub) return 'EPUB';
+  return block?.sourceTitle.match(/\.(txt|md)$/i)?.[1]?.toUpperCase() ?? 'Texto';
+}
+
+/** The name a text document carries until it is given one. */
+export const UNTITLED = 'Sem título';
+
+/** An empty block to type into: the document the "Texto" entry opens. */
+export function emptyTextBlock(lang: string): Block {
+  return {
+    id: crypto.randomUUID(),
+    sourceUrl: UNTITLED,
+    sourceTitle: UNTITLED,
+    lang,
+    text: '',
+    paragraphs: [],
+    createdAt: Date.now(),
   };
 }
 

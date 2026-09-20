@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { BookOpen, CircleAlert, FileText, Plus } from "lucide-react";
+import { CircleAlert, FileText, Plus, Type } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +11,15 @@ import {
 import { MESSAGES } from "./CaptureBar";
 import { useReplaceGuard } from "./useReplaceGuard";
 import { saveBook } from "../lib/book-assets";
-import { fileToBlock, type FileFailure } from "../lib/document";
+import { detectLang } from "../lib/detect-lang";
+import {
+  emptyTextBlock,
+  fileToBlock,
+  type FileFailure,
+  type LibraryDocument,
+} from "../lib/document";
 import { parseEpub, type EpubFailure } from "../lib/epub";
+import { parsePdf, type PdfFailure } from "../lib/pdf";
 import { saveDocument } from "../lib/storage";
 
 const FILE_MESSAGES: Record<FileFailure, string> = {
@@ -27,28 +34,30 @@ const EPUB_MESSAGES: Record<EpubFailure, string> = {
   empty: "Arquivo vazio",
 };
 
+const PDF_MESSAGES: Record<PdfFailure, string> = {
+  invalid: "PDF inválido",
+  encrypted: "PDF protegido por senha não é suportado",
+  empty: "PDF sem texto: um PDF digitalizado precisa de OCR",
+};
+
+/** Everything the importer reads, behind one file picker. */
+const ACCEPT = ".pdf,.epub,.txt,.md";
+
 interface NewDocumentMenuProps {
   /** Called once the imported document is in the buffer. */
   onOpened: () => void;
+  /** Called when a blank document was opened to be typed into. */
+  onCompose: () => void;
 }
 
-export default function NewDocumentMenu({ onOpened }: NewDocumentMenuProps) {
+export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenuProps) {
   const input = useRef<HTMLInputElement>(null);
-  const epubInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const guard = useReplaceGuard();
 
-  async function pick(event: ChangeEvent<HTMLInputElement>): Promise<void> {
-    const file = event.target.files?.[0];
-    // Reset so picking the same file again still fires onChange.
-    event.target.value = "";
-    if (!file) return;
-    setMessage(null);
-    const result = fileToBlock(
-      file.name,
-      await file.text(),
-      navigator.language,
-    );
+  async function openText(name: string, raw: string): Promise<void> {
+    // The file declares no language; the browser's is not the text's.
+    const result = fileToBlock(name, raw, await detectLang(raw, navigator.language));
     if (!result.ok) {
       setMessage(FILE_MESSAGES[result.reason]);
       return;
@@ -56,48 +65,60 @@ export default function NewDocumentMenu({ onOpened }: NewDocumentMenuProps) {
     await guard.open([result.block], onOpened);
   }
 
-  async function pickEpub(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+  /** Shared tail of EPUB and PDF: the file is kept aside, then the document. */
+  async function openBook(bytes: Uint8Array<ArrayBuffer>, doc: LibraryDocument): Promise<void> {
+    // Without the file the chapters and pages cannot be rendered.
+    if (!(await saveBook(doc.id, bytes))) {
+      setMessage(MESSAGES.quota);
+      return;
+    }
+    // The document lands in the library first, so Cancel in the dialog still keeps it.
+    if (!(await saveDocument(doc)).ok) {
+      setMessage(MESSAGES.quota);
+      return;
+    }
+    await guard.open(doc.blocks, onOpened);
+  }
+
+  async function pick(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
+    // Reset so picking the same file again still fires onChange.
     event.target.value = "";
     if (!file) return;
     setMessage(null);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const result = parseEpub(bytes, file.name, navigator.language);
-    if (!result.ok) {
-      setMessage(EPUB_MESSAGES[result.reason]);
+
+    const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+    if (extension === "pdf" || extension === "epub") {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result =
+        extension === "pdf"
+          ? await parsePdf(bytes, file.name, navigator.language)
+          : parseEpub(bytes, file.name, navigator.language);
+      if (!result.ok) {
+        setMessage(
+          extension === "pdf"
+            ? PDF_MESSAGES[result.reason as PdfFailure]
+            : EPUB_MESSAGES[result.reason as EpubFailure],
+        );
+        return;
+      }
+      await openBook(bytes, result.doc);
       return;
     }
-    // The file itself is kept aside first: without it the chapters cannot be rendered.
-    if (!(await saveBook(result.doc.id, bytes))) {
-      setMessage(MESSAGES.quota);
-      return;
-    }
-    // The book lands in the library first, so Cancel in the dialog still keeps it.
-    if (!(await saveDocument(result.doc)).ok) {
-      setMessage(MESSAGES.quota);
-      return;
-    }
-    await guard.open(result.doc.blocks, onOpened);
+
+    await openText(file.name, await file.text());
+  }
+
+  async function compose(): Promise<void> {
+    setMessage(null);
+    await guard.open([emptyTextBlock(navigator.language)], onCompose);
   }
 
   const error = message ?? guard.error;
 
   return (
     <div className="flex flex-col gap-2">
-      <input
-        ref={input}
-        type="file"
-        accept=".txt,.md"
-        hidden
-        onChange={(event) => void pick(event)}
-      />
-      <input
-        ref={epubInput}
-        type="file"
-        accept=".epub"
-        hidden
-        onChange={(event) => void pickEpub(event)}
-      />
+      <input ref={input} type="file" accept={ACCEPT} hidden onChange={(event) => void pick(event)} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button className="w-full justify-start">
@@ -106,18 +127,18 @@ export default function NewDocumentMenu({ onOpened }: NewDocumentMenuProps) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuItem onSelect={() => input.current?.click()}>
-            <FileText />
-            <div className="flex flex-col">
-              <span>Documentos</span>
-              <span className="text-xs text-muted-foreground">TXT, MD</span>
+          <DropdownMenuItem onSelect={() => void compose()}>
+            <Type />
+            <div className="flex flex-1 flex-col gap-0.5 text-left">
+              <span className="font-medium">Texto</span>
+              <span className="text-xs text-muted-foreground">Escreva ou cole</span>
             </div>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => epubInput.current?.click()}>
-            <BookOpen />
-            <div className="flex flex-col">
-              <span>Livro</span>
-              <span className="text-xs text-muted-foreground">EPUB</span>
+          <DropdownMenuItem onSelect={() => input.current?.click()}>
+            <FileText />
+            <div className="flex flex-1 flex-col gap-0.5 text-left">
+              <span className="font-medium">Documento</span>
+              <span className="text-xs text-muted-foreground">PDF, EPUB, TXT, MD</span>
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>

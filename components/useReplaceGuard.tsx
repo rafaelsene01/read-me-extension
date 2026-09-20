@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { MESSAGES } from './CaptureBar';
 import { toLibraryDocument } from '../lib/document';
-import { getBlocks, saveDocument, setBlocks } from '../lib/storage';
+import { getBlocks, getProgress, saveDocument, setBlocks, setCursor } from '../lib/storage';
 import type { Block } from '../lib/types';
 
 interface Pending {
@@ -37,6 +37,10 @@ export function useReplaceGuard(): {
       setError(MESSAGES.quota);
       return;
     }
+    // Pick the reading back up where this document was left; a document never
+    // read, or one edited since, starts over.
+    const saved = await getProgress(blocks[0]!.id);
+    await setCursor(saved && blocks.some((block) => block.id === saved.blockId) ? saved : null);
     onOpened?.();
   }
 

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { CircleAlert, Pause, Play, Square } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp, CircleAlert, Pause, Play, Square } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { cn } from '@/lib/utils';
 import TtsModelStatus, { useModelAvailability } from './TtsModelStatus';
 import TtsVoiceSelect, { type VoiceOption } from './TtsVoiceSelect';
 import { sendCommand } from '../lib/messages';
@@ -32,6 +33,12 @@ interface ControlsProps {
   empty: boolean;
   /** Estimated reading time at the current speed, shown under the speed slider. */
   readingTime?: string | null;
+  /** Extra buttons between the speed and the minimize button. */
+  actions?: ReactNode;
+  /** Collapsed: only play/pause, the speed and the estimate stay. */
+  minimized?: boolean;
+  /** Omitted: no minimize button, and the bar is always whole. */
+  onToggleMinimized?: () => void;
 }
 
 export function languageName(lang: string): string {
@@ -51,6 +58,9 @@ export default function Controls({
   translationLang,
   empty,
   readingTime,
+  actions,
+  minimized = false,
+  onToggleMinimized,
 }: ControlsProps) {
   const [voices, setVoices] = useState<Voice[]>([]);
 
@@ -108,16 +118,18 @@ export default function Controls({
           >
             {playing ? <Pause className="size-5" /> : <Play className="size-5 translate-x-px" />}
           </Button>
-          <Button
-            variant="secondary"
-            size="icon"
-            className="rounded-full"
-            aria-label="Parar"
-            disabled={blocked}
-            onClick={() => void sendCommand({ type: 'stop' })}
-          >
-            <Square className="size-3.5" />
-          </Button>
+          {!minimized && (
+            <Button
+              variant="secondary"
+              size="icon"
+              className="rounded-full"
+              aria-label="Parar"
+              disabled={blocked}
+              onClick={() => void sendCommand({ type: 'stop' })}
+            >
+              <Square className="size-3.5" />
+            </Button>
+          )}
 
           <div className="flex flex-1 flex-col gap-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -129,7 +141,7 @@ export default function Controls({
             <Slider
               aria-labelledby="rate-label"
               min={0.5}
-              max={3}
+              max={2}
               step={0.1}
               value={[prefs.rate]}
               // Live while dragging; the release lets chrome.tts restart the sentence.
@@ -144,10 +156,24 @@ export default function Controls({
               <span className="text-xs text-muted-foreground">Leitura estimada: {readingTime}</span>
             )}
           </div>
+
+          {actions}
+
+          {onToggleMinimized && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-expanded={!minimized}
+              aria-label={minimized ? 'Expandir controles' : 'Minimizar controles'}
+              onClick={onToggleMinimized}
+            >
+              {minimized ? <ChevronUp /> : <ChevronDown />}
+            </Button>
+          )}
         </div>
 
         {/* Side by side where there is room (documents page); stacked in the narrow side panel. */}
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className={cn('grid gap-2 sm:grid-cols-2', minimized && 'hidden')}>
           <Select
             value={engine}
             onValueChange={(value) =>
@@ -175,21 +201,21 @@ export default function Controls({
           />
         </div>
 
-        {engine !== 'system' && <TtsModelStatus engine={engine} model={model} />}
+        {!minimized && engine !== 'system' && <TtsModelStatus engine={engine} model={model} />}
 
-        {engine === 'system' && voices.length === 0 && (
+        {!minimized && engine === 'system' && voices.length === 0 && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>Nenhuma voz disponível neste navegador</AlertDescription>
           </Alert>
         )}
-        {engine === 'system' && voices.length > 0 && voice === null && (
+        {!minimized && engine === 'system' && voices.length > 0 && voice === null && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>Sem voz instalada para {languageName(voiceLang)}</AlertDescription>
           </Alert>
         )}
-        {engine !== 'system' && localVoice === null && (
+        {!minimized && engine !== 'system' && localVoice === null && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>

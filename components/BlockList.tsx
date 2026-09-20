@@ -16,9 +16,11 @@ import { cn } from '@/lib/utils';
 import BookChapter from './BookChapter';
 import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
+import PdfPage from './PdfPage';
 import { LANGS } from './TranslatePanel';
 import { applyEdit, applyLang } from '../lib/edit';
 import { sendCommand } from '../lib/messages';
+import { revealElement } from '../lib/scroll';
 import { removeBlock, setBlocks } from '../lib/storage';
 import { isStale } from '../lib/translate';
 import type { Block, Cursor, Paragraph, ParagraphKind, Prefs } from '../lib/types';
@@ -31,13 +33,20 @@ interface BlockListProps {
   playing: boolean;
   /** Tailwind font-size class of the text; the documents page zooms with it. */
   textSize?: string;
+  /** Zoom of a PDF page, whose font size cannot change; 1 is its natural size. */
+  scale?: number;
   /** Book pages: render only the block with this id; recordings still cover all blocks. */
   visible?: string;
   /** Documents page: show a chapter with the HTML and CSS of the book when it is available. */
   bookView?: boolean;
 }
 
-/** Paragraphs shown for the active tab; null when the block has no translation yet. */
+/**
+ * Paragraphs shown for the active tab; null when the block has no translation yet.
+ * A book chapter or a PDF page always shows its original: on the translation tab
+ * it is only spoken translated, sentence by sentence, and the page itself stays
+ * as it is.
+ */
 function paragraphsFor(block: Block, activeTab: Prefs['activeTab']): Paragraph[] | null {
   if (activeTab === 'original' || block.kinds) return block.paragraphs;
   return block.translation?.paragraphs ?? null;
@@ -76,6 +85,7 @@ export default function BlockList({
   activeTab,
   playing,
   textSize = 'text-[15px]',
+  scale,
   visible,
   bookView,
 }: BlockListProps) {
@@ -132,7 +142,9 @@ export default function BlockList({
                 }
                 className={cn(
                   'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
-                  active ? 'bg-highlight' : 'hover:bg-muted',
+                  active
+                    ? 'bg-highlight text-highlight-foreground'
+                    : 'hover:bg-highlight/40',
                 )}
               >
                 {sentence.text}{' '}
@@ -148,9 +160,10 @@ export default function BlockList({
   // cursor coordinates.
   const activeKey = cursor ? `${cursor.blockId}:${cursor.paraIndex}:${cursor.sentIndex}` : null;
 
-  // The sentence being read is pinned to the top of the scroll box.
+  // The sentence being read is kept in the middle of the scroll box, and only
+  // when it has left it: reading a screenful does not scroll on every sentence.
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (activeRef.current) revealElement(activeRef.current);
   }, [activeKey, activeTab]);
 
   return (
@@ -163,37 +176,46 @@ export default function BlockList({
       )}
       {(visible ? blocks.filter((block) => block.id === visible) : blocks).map((block) => {
         const paragraphs = paragraphsFor(block, activeTab);
+        // A page of a paged document has nothing left to put in the card header,
+        // so the card holds only the content and needs no gap either:
+        // which page it is sits in the document header, next to the buttons that
+        // change it.
+        const bare = bookView && !!block.kinds;
         return (
-          <Card key={block.id} className="gap-3 py-3">
-            <CardHeader className="flex items-center gap-1 px-3">
+          <Card key={block.id} className={cn('py-3', !bare && 'gap-3')}>
+            <CardHeader className={cn('flex items-center gap-1 px-3', bare && 'hidden')}>
               <span
                 title={block.sourceUrl}
                 className="flex-1 truncate text-xs text-muted-foreground"
               >
                 {block.sourceUrl}
               </span>
-              <Select
-                value={block.lang}
-                disabled={playing}
-                onValueChange={(lang) => void persistLang(block, lang)}
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <SelectTrigger size="sm" aria-label="Idioma do texto" className="h-7 text-xs">
-                      <Languages />
-                      <SelectValue />
-                    </SelectTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>Idioma do texto: define a voz da leitura e a origem da tradução</TooltipContent>
-                </Tooltip>
-                <SelectContent>
-                  {(LANGS.includes(block.lang) ? LANGS : [block.lang, ...LANGS]).map((lang) => (
-                    <SelectItem key={lang} value={lang}>
-                      {languageName(lang)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* On the documents page the language belongs to the whole document and
+                  lives in its header, next to the page navigation. */}
+              {!bookView && (
+                <Select
+                  value={block.lang}
+                  disabled={playing}
+                  onValueChange={(lang) => void persistLang(block, lang)}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <SelectTrigger size="sm" aria-label="Idioma do texto" className="h-7 text-xs">
+                        <Languages />
+                        <SelectValue />
+                      </SelectTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Idioma do texto: define a voz da leitura e a origem da tradução</TooltipContent>
+                  </Tooltip>
+                  <SelectContent>
+                    {(LANGS.includes(block.lang) ? LANGS : [block.lang, ...LANGS]).map((lang) => (
+                      <SelectItem key={lang} value={lang}>
+                        {languageName(lang)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {activeTab === 'original' &&
                 !block.kinds &&
                 (editingId === block.id ? (
@@ -228,19 +250,22 @@ export default function BlockList({
                     <TooltipContent>Editar</TooltipContent>
                   </Tooltip>
                 ))}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Remover"
-                    onClick={() => void removeBlock(block.id)}
-                  >
-                    <X />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Remover</TooltipContent>
-              </Tooltip>
+              {/* On the documents page the header closes the whole document instead. */}
+              {!bookView && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Remover"
+                      onClick={() => void removeBlock(block.id)}
+                    >
+                      <X />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Remover</TooltipContent>
+                </Tooltip>
+              )}
             </CardHeader>
 
             <CardContent className={cn('px-3 leading-relaxed', textSize)}>
@@ -274,7 +299,15 @@ export default function BlockList({
                 </div>
               ) : paragraphs === null ? (
                 <p className="text-muted-foreground">Bloco ainda não traduzido.</p>
-              ) : bookView && block.epub && activeTab === 'original' ? (
+              ) : bookView && block.pdf ? (
+                // Falls back to the extracted paragraphs when the file is no longer stored.
+                <PdfPage
+                  block={block}
+                  cursor={cursor}
+                  scale={scale}
+                  fallback={kindsView(block, paragraphs)}
+                />
+              ) : bookView && block.epub ? (
                 // Falls back to the paragraphs when the book is not in the cache (P1-E AC10).
                 <BookChapter
                   block={block}

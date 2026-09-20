@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { loadBook } from '../lib/book-assets';
 import { renderChapter } from '../lib/book-render';
 import { sendCommand } from '../lib/messages';
+import { revealElement } from '../lib/scroll';
 import type { Block, Cursor } from '../lib/types';
 
 type Rendered = ReturnType<typeof renderChapter>;
@@ -13,8 +14,8 @@ type Rendered = ReturnType<typeof renderChapter>;
  */
 const SENTENCE_CSS = `
 .rm-s{cursor:pointer;border-radius:.25em}
-.rm-s:hover{background:var(--muted)}
-.rm-s.rm-on{background:var(--highlight)}
+.rm-s:hover{background:color-mix(in oklch, var(--highlight) 40%, transparent)}
+.rm-s.rm-on{background:var(--highlight);color:var(--highlight-foreground)}
 `;
 
 interface BookChapterProps {
@@ -98,7 +99,7 @@ export default function BookChapter({ block, cursor, textSize, fallback }: BookC
     return () => root.removeEventListener('click', onClick);
   }, [view, block.id]);
 
-  // The sentence being read is highlighted and pinned to the top (P1-E AC8).
+  // The sentence being read is highlighted and kept in view (P1-E AC8).
   const active =
     view && cursor?.blockId === block.id ? `${cursor.paraIndex}:${cursor.sentIndex}` : null;
 
@@ -110,7 +111,7 @@ export default function BookChapter({ block, cursor, textSize, fallback }: BookC
     // One sentence can be several spans when it crosses inline elements.
     const spans = root.querySelectorAll(`.rm-s[data-s="${active}"]`);
     spans.forEach((el) => el.classList.add('rm-on'));
-    spans[0]?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (spans[0]) revealElement(spans[0]);
   }, [view, active]);
 
   if (!view) return fallback;

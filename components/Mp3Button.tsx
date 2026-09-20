@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { languageName } from './Controls';
+import { saveAudio } from '../lib/audio-library';
 import { viewOf } from '../lib/engine';
 import { exportAudio, type ExportJob, type TtsHostPort } from '../lib/tts/export';
 import { getEngineDefinition, pickLocalVoice } from '../lib/tts/registry';
@@ -17,6 +18,8 @@ import ttsWorkerUrl from '../entrypoints/offscreen/tts-worker.ts?worker&url';
 interface Mp3ButtonProps {
   blocks: Block[];
   prefs: Prefs;
+  /** Icon only, for the transport bar: the progress and the error go in the tooltip. */
+  compact?: boolean;
 }
 
 /**
@@ -111,7 +114,7 @@ function download(blob: Blob, title: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export default function Mp3Button({ blocks, prefs }: Mp3ButtonProps) {
+export default function Mp3Button({ blocks, prefs, compact }: Mp3ButtonProps) {
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dispose = useRef<(() => void) | null>(null);
@@ -136,7 +139,10 @@ export default function Mp3Button({ blocks, prefs }: Mp3ButtonProps) {
       const blob = await exportAudio(host.port, engine, jobs, (fraction) =>
         setProgress(Math.round(fraction * 100)),
       );
-      download(blob, blocks[0]!.sourceTitle);
+      const name = blocks[0]!.sourceTitle;
+      // A copy stays in the Áudio section; the download is the same blob.
+      await saveAudio(name, blob);
+      download(blob, name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -146,7 +152,29 @@ export default function Mp3Button({ blocks, prefs }: Mp3ButtonProps) {
     }
   }
 
-  const button = (
+  const hint = system
+    ? 'Escolha uma voz neural para gerar MP3'
+    : busy
+      ? `Gerando MP3: ${progress}%`
+      : (error ?? 'Gerar MP3');
+
+  const button = compact ? (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={hint}
+      disabled={system || busy || blocks.length === 0}
+      onClick={() => {
+        if (engine !== 'system') void generate(engine);
+      }}
+    >
+      {busy ? (
+        <span className="text-[10px] font-medium tabular-nums">{progress}</span>
+      ) : (
+        <FileAudio />
+      )}
+    </Button>
+  ) : (
     <Button
       variant="outline"
       disabled={system || busy || blocks.length === 0}
@@ -159,21 +187,26 @@ export default function Mp3Button({ blocks, prefs }: Mp3ButtonProps) {
     </Button>
   );
 
+  // A disabled button fires no pointer events: the span carries the tooltip.
+  const wrapped =
+    system || compact ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={system ? 0 : -1} className="w-fit">
+            {button}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{hint}</TooltipContent>
+      </Tooltip>
+    ) : (
+      button
+    );
+
+  if (compact) return wrapped;
+
   return (
     <div className="flex flex-col gap-2">
-      {system ? (
-        <Tooltip>
-          {/* A disabled button fires no pointer events: the span carries the tooltip. */}
-          <TooltipTrigger asChild>
-            <span tabIndex={0} className="w-fit">
-              {button}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Escolha uma voz neural para gerar MP3</TooltipContent>
-        </Tooltip>
-      ) : (
-        button
-      )}
+      {wrapped}
       {busy && (
         <div className="flex items-center gap-2">
           <Progress aria-label="Progresso do MP3" value={progress} />

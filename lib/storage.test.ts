@@ -3,11 +3,16 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   appendBlock,
   clearBlocks,
+  createFolder,
   deleteDocument,
+  deleteFolder,
   getBlocks,
   getCursor,
   getDocuments,
+  getFolders,
   getPrefs,
+  getProgress,
+  moveDocument,
   removeBlock,
   saveDocument,
   setBlocks,
@@ -189,6 +194,12 @@ describe('prefs', () => {
     expect(prefs.rate).toBe(1.75);
     expect(prefs.activeTab).toBe('original');
   });
+
+  it('brings a rate stored when the slider went to 3x back into range', async () => {
+    await setPrefs({ rate: 2.8 });
+
+    expect((await getPrefs()).rate).toBe(2);
+  });
 });
 
 describe('cursor', () => {
@@ -302,5 +313,91 @@ describe('library documents', () => {
 
     expect(result).toEqual({ ok: false, reason: 'quota' });
     expect((await getDocuments()).map((d) => d.id)).toEqual(['a']);
+  });
+});
+
+describe('folders', () => {
+  it('creates folders and lists them in alphabetical order', async () => {
+    await createFolder('Trabalho');
+    await createFolder('Estudos');
+
+    expect(await getFolders()).toEqual(['Estudos', 'Trabalho']);
+  });
+
+  it('ignores a blank name and a name already taken, whatever the case', async () => {
+    await createFolder('Estudos');
+    await createFolder('  ');
+    await createFolder('estudos');
+
+    expect(await getFolders()).toEqual(['Estudos']);
+  });
+
+  it('files a document under a folder and takes it back out', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    await createFolder('Estudos');
+
+    await moveDocument('a', 'Estudos');
+    expect((await getDocuments())[0]!.folder).toBe('Estudos');
+
+    await moveDocument('a', null);
+    expect((await getDocuments())[0]!.folder).toBeUndefined();
+  });
+
+  it('keeps the folder of a document that is saved again without one', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    await moveDocument('a', 'Estudos');
+
+    await saveDocument(toLibraryDocument([block('a', 'um'), block('b', 'dois')], 200));
+
+    expect((await getDocuments())[0]!.folder).toBe('Estudos');
+  });
+
+  it('deleting a folder returns its documents to the top level, never deletes them', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    await createFolder('Estudos');
+    await moveDocument('a', 'Estudos');
+
+    await deleteFolder('Estudos');
+
+    expect(await getFolders()).toEqual([]);
+    const docs = await getDocuments();
+    expect(docs).toHaveLength(1);
+    expect(docs[0]!.folder).toBeUndefined();
+  });
+});
+
+describe('reading progress', () => {
+  const at = (blockId: string) => ({ blockId, paraIndex: 2, sentIndex: 1 });
+
+  it('records where the current document is being read', async () => {
+    await setBlocks([block('a', 'um'), block('b', 'dois')]);
+
+    await setCursor(at('b'));
+
+    expect(await getProgress('a')).toEqual(at('b'));
+  });
+
+  it('keeps the stored progress when the cursor is cleared', async () => {
+    await setBlocks([block('a', 'um')]);
+    await setCursor(at('a'));
+
+    await setCursor(null);
+
+    expect(await getCursor()).toBeNull();
+    expect(await getProgress('a')).toEqual(at('a'));
+  });
+
+  it('has no progress for a document that was never read', async () => {
+    expect(await getProgress('a')).toBeNull();
+  });
+
+  it('forgets the progress of a document removed from the library', async () => {
+    await setBlocks([block('a', 'um')]);
+    await setCursor(at('a'));
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+
+    await deleteDocument('a');
+
+    expect(await getProgress('a')).toBeNull();
   });
 });

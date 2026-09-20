@@ -125,32 +125,36 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
         </TabsList>
       </Tabs>
 
-      <div className="flex items-center gap-2">
-        <Select
-          value={prefs.targetLang}
-          onValueChange={(targetLang) => {
-            if (bookOnly && prefs.activeTab === 'translation') prepare(targetLang);
-            void setPrefs({ targetLang });
-          }}
-        >
-          <SelectTrigger aria-label="Idioma de destino" className="flex-1">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LANGS.map((lang) => (
-              <SelectItem key={lang} value={lang}>
-                {languageName(lang)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {!bookOnly && (
-          <Button variant="outline" disabled={blocked} onClick={translate}>
-            <Languages />
-            Traduzir
-          </Button>
-        )}
-      </div>
+      {/* The target language only matters once the translation tab is on; on the
+          original tab it is noise. */}
+      {prefs.activeTab === 'translation' && (
+        <div className="flex items-center gap-2">
+          <Select
+            value={prefs.targetLang}
+            onValueChange={(targetLang) => {
+              if (bookOnly) prepare(targetLang);
+              void setPrefs({ targetLang });
+            }}
+          >
+            <SelectTrigger aria-label="Idioma de destino" className="flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGS.map((lang) => (
+                <SelectItem key={lang} value={lang}>
+                  {languageName(lang)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!bookOnly && (
+            <Button variant="outline" disabled={blocked} onClick={translate}>
+              <Languages />
+              Traduzir
+            </Button>
+          )}
+        </div>
+      )}
 
       {progress !== null && <Progress value={progress * 100} />}
 

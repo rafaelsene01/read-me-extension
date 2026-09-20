@@ -9,6 +9,9 @@ import type { Block, Cursor, Prefs } from './types';
  */
 export const MAX_BUFFER_CHARS = 500_000;
 
+/** Fastest reading speed offered, in the slider and in what is stored. */
+export const MAX_RATE = 2;
+
 export type SetResult = { ok: true } | { ok: false; reason: 'quota' };
 export type AppendResult = SetResult | { ok: false; reason: 'full' };
 
@@ -16,6 +19,10 @@ const blocksItem = storage.defineItem<Block[]>('local:blocks', { fallback: [] })
 const cursorItem = storage.defineItem<Cursor | null>('local:cursor', { fallback: null });
 const prefsItem = storage.defineItem<Partial<Prefs>>('local:prefs', { fallback: {} });
 const documentsItem = storage.defineItem<LibraryDocument[]>('local:documents', { fallback: [] });
+/** Folder names of the library; a folder exists even while it holds nothing. */
+const foldersItem = storage.defineItem<string[]>('local:folders', { fallback: [] });
+/** Where the reading of each document stopped, by document id. */
+const progressItem = storage.defineItem<Record<string, Cursor>>('local:progress', { fallback: {} });
 
 function defaultVoiceByEngine(): Prefs['voiceByEngine'] {
   return { system: {}, kokoro: {}, supertonic: {} };
@@ -73,14 +80,19 @@ export async function getDocuments(): Promise<LibraryDocument[]> {
   return (await documentsItem.getValue()).sort((a, b) => b.savedAt - a.savedAt);
 }
 
-/** Replaces the document with the same id, or adds it. Keeps the stored cover when the incoming document has none. */
+/**
+ * Replaces the document with the same id, or adds it. The cover and the folder
+ * of the stored one are kept when the incoming document carries none: saving
+ * the buffer again must not send a filed document back to the top level.
+ */
 export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
   const docs = await documentsItem.getValue();
   const existing = docs.find((d) => d.id === doc.id);
-  const saved =
-    doc.cover === undefined && existing?.cover !== undefined
-      ? { ...doc, cover: existing.cover }
-      : doc;
+  const saved = {
+    ...doc,
+    cover: doc.cover ?? existing?.cover,
+    folder: doc.folder ?? existing?.folder,
+  };
   try {
     await documentsItem.setValue([...docs.filter((d) => d.id !== doc.id), saved]);
   } catch {
@@ -93,8 +105,10 @@ export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
 /** Removing an id that is not stored is not an error. */
 export async function deleteDocument(id: string): Promise<SetResult> {
   const docs = await documentsItem.getValue();
+  const { [id]: _gone, ...progress } = await progressItem.getValue();
   try {
     await documentsItem.setValue(docs.filter((d) => d.id !== id));
+    await progressItem.setValue(progress);
   } catch {
     // Quota error: nothing was written, so the previous library still stands.
     return { ok: false, reason: 'quota' };
@@ -102,15 +116,64 @@ export async function deleteDocument(id: string): Promise<SetResult> {
   return { ok: true };
 }
 
+/** Folder names, in alphabetical order. */
+export async function getFolders(): Promise<string[]> {
+  return [...(await foldersItem.getValue())].sort((a, b) => a.localeCompare(b));
+}
+
+/** Adds a folder; a blank name, or one already taken, changes nothing. */
+export async function createFolder(name: string): Promise<SetResult> {
+  const folder = name.trim();
+  const folders = await foldersItem.getValue();
+  if (!folder || folders.some((other) => other.toLowerCase() === folder.toLowerCase())) {
+    return { ok: true };
+  }
+  try {
+    await foldersItem.setValue([...folders, folder]);
+  } catch {
+    return { ok: false, reason: 'quota' };
+  }
+  return { ok: true };
+}
+
+/** Removes a folder; the documents it held go back to the top level, never away. */
+export async function deleteFolder(name: string): Promise<SetResult> {
+  const docs = await documentsItem.getValue();
+  try {
+    await foldersItem.setValue((await foldersItem.getValue()).filter((other) => other !== name));
+    await documentsItem.setValue(
+      docs.map((doc) => (doc.folder === name ? { ...doc, folder: undefined } : doc)),
+    );
+  } catch {
+    return { ok: false, reason: 'quota' };
+  }
+  return { ok: true };
+}
+
+/** Files a document under `folder`, or back at the top level with null. */
+export async function moveDocument(id: string, folder: string | null): Promise<SetResult> {
+  const docs = await documentsItem.getValue();
+  try {
+    await documentsItem.setValue(
+      docs.map((doc) => (doc.id === id ? { ...doc, folder: folder ?? undefined } : doc)),
+    );
+  } catch {
+    return { ok: false, reason: 'quota' };
+  }
+  return { ok: true };
+}
+
 export async function getPrefs(): Promise<Prefs> {
   const stored = await prefsItem.getValue();
-  return {
+  const prefs = {
     ...defaultPrefs(),
     ...stored,
     // Stored prefs from before voiceByEngine existed (or a partial update)
     // must not leave any engine slot undefined.
     voiceByEngine: { ...defaultVoiceByEngine(), ...(stored.voiceByEngine ?? {}) },
   };
+  // The speed used to go up to 3x: a rate stored back then stays in range.
+  return { ...prefs, rate: Math.min(prefs.rate, MAX_RATE) };
 }
 
 export async function setPrefs(patch: Partial<Prefs>): Promise<void> {
@@ -121,6 +184,19 @@ export function getCursor(): Promise<Cursor | null> {
   return cursorItem.getValue();
 }
 
-export function setCursor(cursor: Cursor | null): Promise<void> {
-  return cursorItem.setValue(cursor);
+/**
+ * Also records where the current document is being read, so reopening it from
+ * the library resumes at the same page and block instead of at the beginning.
+ */
+export async function setCursor(cursor: Cursor | null): Promise<void> {
+  await cursorItem.setValue(cursor);
+  const id = (await getBlocks())[0]?.id;
+  // A cleared cursor is not progress: the stored one stays as it was.
+  if (!id || !cursor) return;
+  await progressItem.setValue({ ...(await progressItem.getValue()), [id]: cursor });
+}
+
+/** Where `id` was left, or null when it was never read. */
+export async function getProgress(id: string): Promise<Cursor | null> {
+  return (await progressItem.getValue())[id] ?? null;
 }

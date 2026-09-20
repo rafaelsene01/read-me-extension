@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { fileToBlock, readingTime, toLibraryDocument } from './document';
+import { documentKind, fileToBlock, readingTime, toLibraryDocument } from './document';
 import { stripMarkdown } from './markdown';
 import { segmentBlock } from './segment';
+import type { Block } from './types';
+import type { LibraryDocument } from './document';
 
 function ok(result: ReturnType<typeof fileToBlock>) {
   if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
@@ -89,5 +91,24 @@ describe('readingTime', () => {
   it('switches to hours from 60 minutes', () => {
     expect(readingTime([words(180 * 60)])).toBe('1 h');
     expect(readingTime([words(180 * 80)])).toBe('1 h 20 min');
+  });
+});
+
+describe('documentKind', () => {
+  const doc = (block: Partial<Block>): LibraryDocument =>
+    toLibraryDocument([{ ...ok(fileToBlock('a.txt', 'Texto.', 'pt-BR')), ...block }]);
+
+  it('names the format of an imported file', () => {
+    expect(documentKind(doc({ pdf: { book: 'b', page: 1 } }))).toBe('PDF');
+    expect(documentKind(doc({ epub: { book: 'b', path: 'c.xhtml' } }))).toBe('EPUB');
+  });
+
+  it('takes the extension of a text file from its name', () => {
+    expect(documentKind(doc({ sourceTitle: 'notas.md' }))).toBe('MD');
+    expect(documentKind(doc({ sourceTitle: 'notas.txt' }))).toBe('TXT');
+  });
+
+  it('falls back to Texto for a captured page, which has no file', () => {
+    expect(documentKind(doc({ sourceTitle: 'https://exemplo.com/artigo' }))).toBe('Texto');
   });
 });

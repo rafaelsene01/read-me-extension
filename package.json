@@ -23,6 +23,7 @@
     "fflate": "^0.8.3",
     "lucide-react": "^1.47.0",
     "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",
+    "pdfjs-dist": "^6.3.289",
     "radix-ui": "^1.6.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
