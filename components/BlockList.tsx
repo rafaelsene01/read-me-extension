@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import BookChapter from './BookChapter';
 import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
 import { LANGS } from './TranslatePanel';
@@ -20,7 +21,7 @@ import { applyEdit, applyLang } from '../lib/edit';
 import { sendCommand } from '../lib/messages';
 import { removeBlock, setBlocks } from '../lib/storage';
 import { isStale } from '../lib/translate';
-import type { Block, Cursor, Paragraph, Prefs } from '../lib/types';
+import type { Block, Cursor, Paragraph, ParagraphKind, Prefs } from '../lib/types';
 
 interface BlockListProps {
   blocks: Block[];
@@ -30,12 +31,43 @@ interface BlockListProps {
   playing: boolean;
   /** Tailwind font-size class of the text; the documents page zooms with it. */
   textSize?: string;
+  /** Book pages: render only the block with this id; recordings still cover all blocks. */
+  visible?: string;
+  /** Documents page: show a chapter with the HTML and CSS of the book when it is available. */
+  bookView?: boolean;
 }
 
 /** Paragraphs shown for the active tab; null when the block has no translation yet. */
 function paragraphsFor(block: Block, activeTab: Prefs['activeTab']): Paragraph[] | null {
-  if (activeTab === 'original') return block.paragraphs;
+  if (activeTab === 'original' || block.kinds) return block.paragraphs;
   return block.translation?.paragraphs ?? null;
+}
+
+/** Tag for a paragraph: headings keep their level, everything else renders as <p>. */
+function kindTag(kind: ParagraphKind): 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' {
+  return kind === 'quote' || kind === 'li' ? 'p' : kind;
+}
+
+/** Visual style of a paragraph kind; sizes in em so they follow the textSize zoom. */
+function kindClasses(kind: ParagraphKind): string {
+  switch (kind) {
+    case 'h1':
+      return 'text-[1.6em] font-semibold';
+    case 'h2':
+      return 'text-[1.4em] font-semibold';
+    case 'h3':
+      return 'text-[1.2em] font-semibold';
+    case 'h4':
+    case 'h5':
+    case 'h6':
+      return 'font-semibold';
+    case 'quote':
+      return 'border-l-2 pl-4 italic text-muted-foreground';
+    case 'li':
+      return 'ml-6 list-item list-disc';
+    default:
+      return '';
+  }
 }
 
 export default function BlockList({
@@ -44,6 +76,8 @@ export default function BlockList({
   activeTab,
   playing,
   textSize = 'text-[15px]',
+  visible,
+  bookView,
 }: BlockListProps) {
   const activeRef = useRef<HTMLSpanElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,6 +108,42 @@ export default function BlockList({
     await save(blocks.map((other) => (other.id === block.id ? relanged : other)));
   }
 
+  /** The paragraph render, also the fallback of the book view. */
+  function kindsView(block: Block, paragraphs: Paragraph[]) {
+    return paragraphs.map((paragraph, paraIndex) => {
+      const kind = block.kinds?.[paraIndex] ?? 'p';
+      const Tag = kindTag(kind);
+      return (
+        <Tag key={paragraph.id} className={cn('mb-2 last:mb-0', kindClasses(kind))}>
+          {paragraph.sentences.map((sentence, sentIndex) => {
+            const active =
+              block.id === cursor?.blockId &&
+              paraIndex === cursor.paraIndex &&
+              sentIndex === cursor.sentIndex;
+            return (
+              <span
+                key={sentence.id}
+                ref={active ? activeRef : null}
+                onClick={() =>
+                  void sendCommand({
+                    type: 'seek',
+                    cursor: { blockId: block.id, paraIndex, sentIndex },
+                  })
+                }
+                className={cn(
+                  'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
+                  active ? 'bg-highlight' : 'hover:bg-muted',
+                )}
+              >
+                {sentence.text}{' '}
+              </span>
+            );
+          })}
+        </Tag>
+      );
+    });
+  }
+
   // Position, not sentence id: the translation tab has its own ids at the same
   // cursor coordinates.
   const activeKey = cursor ? `${cursor.blockId}:${cursor.paraIndex}:${cursor.sentIndex}` : null;
@@ -91,7 +161,7 @@ export default function BlockList({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {blocks.map((block) => {
+      {(visible ? blocks.filter((block) => block.id === visible) : blocks).map((block) => {
         const paragraphs = paragraphsFor(block, activeTab);
         return (
           <Card key={block.id} className="gap-3 py-3">
@@ -125,6 +195,7 @@ export default function BlockList({
                 </SelectContent>
               </Select>
               {activeTab === 'original' &&
+                !block.kinds &&
                 (editingId === block.id ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -203,35 +274,16 @@ export default function BlockList({
                 </div>
               ) : paragraphs === null ? (
                 <p className="text-muted-foreground">Bloco ainda não traduzido.</p>
+              ) : bookView && block.epub && activeTab === 'original' ? (
+                // Falls back to the paragraphs when the book is not in the cache (P1-E AC10).
+                <BookChapter
+                  block={block}
+                  cursor={cursor}
+                  textSize={textSize}
+                  fallback={kindsView(block, paragraphs)}
+                />
               ) : (
-                paragraphs.map((paragraph, paraIndex) => (
-                  <p key={paragraph.id} className="mb-2 last:mb-0">
-                    {paragraph.sentences.map((sentence, sentIndex) => {
-                      const active =
-                        block.id === cursor?.blockId &&
-                        paraIndex === cursor.paraIndex &&
-                        sentIndex === cursor.sentIndex;
-                      return (
-                        <span
-                          key={sentence.id}
-                          ref={active ? activeRef : null}
-                          onClick={() =>
-                            void sendCommand({
-                              type: 'seek',
-                              cursor: { blockId: block.id, paraIndex, sentIndex },
-                            })
-                          }
-                          className={cn(
-                            'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors',
-                            active ? 'bg-highlight' : 'hover:bg-muted',
-                          )}
-                        >
-                          {sentence.text}{' '}
-                        </span>
-                      );
-                    })}
-                  </p>
-                ))
+                kindsView(block, paragraphs)
               )}
             </CardContent>
           </Card>

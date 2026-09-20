@@ -10,6 +10,8 @@ export interface LibraryDocument {
   name: string;
   /** Includes the translation, when there is one. */
   blocks: Block[];
+  /** Book cover as a data URL, when the document came from an EPUB. */
+  cover?: string;
   savedAt: number;
 }
 

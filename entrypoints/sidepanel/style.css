@@ -24,6 +24,9 @@
   --input: oklch(0.92 0.004 286);
   --ring: oklch(0.541 0.247 293);
   --highlight: oklch(0.905 0.09 295);
+  /* Book pages stay a light sheet in both themes. */
+  --paper: oklch(0.995 0.003 95);
+  --paper-foreground: oklch(0.21 0.006 286);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,6 +50,8 @@
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.702 0.183 293);
     --highlight: oklch(0.38 0.14 293);
+    --paper: oklch(0.985 0.004 95);
+    --paper-foreground: oklch(0.21 0.006 286);
   }
 }
 
@@ -74,6 +79,8 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-highlight: var(--highlight);
+  --color-paper: var(--paper);
+  --color-paper-foreground: var(--paper-foreground);
 }
 
 @layer base {

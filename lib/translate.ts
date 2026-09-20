@@ -1,4 +1,5 @@
 import type { Block } from './types';
+import { ensureOffscreen } from './tts/offscreen';
 
 export type Availability = 'unavailable' | 'downloadable' | 'downloading' | 'available';
 
@@ -113,4 +114,98 @@ export function translateBlock(
       ),
     )
     .then((lines) => lines.join('\n'));
+}
+
+/** Message tag for translation requests answered by the offscreen document. */
+export const TRANSLATE_CHANNEL = 'translate' as const;
+
+interface TranslateMessage {
+  channel: typeof TRANSLATE_CHANNEL;
+  text: string;
+  source: string;
+  target: string;
+}
+
+type TranslateResponse = { ok: true; text: string } | { ok: false; error: string };
+
+/**
+ * Service-worker side: the Translator API does not exist in workers, so the
+ * offscreen document translates and answers through TRANSLATE_CHANNEL.
+ */
+export async function requestTranslation(
+  text: string,
+  source: string,
+  target: string,
+): Promise<string> {
+  await ensureOffscreen();
+  const message: TranslateMessage = { channel: TRANSLATE_CHANNEL, text, source, target };
+  const response = (await chrome.runtime.sendMessage(message)) as TranslateResponse | undefined;
+  if (!response) throw new Error('O tradutor não respondeu');
+  if (!response.ok) throw new Error(response.error);
+  return response.text;
+}
+
+/** Offscreen side: answers TRANSLATE_CHANNEL requests, one Translator per language pair. */
+export function serveTranslations(): void {
+  const translators = new Map<string, Promise<TranslatorInstance>>();
+  // ponytail: unbounded cache, lives until the offscreen document closes when idle; cap it if memory becomes a problem.
+  const texts = new Map<string, Promise<string>>();
+
+  // A rejected promise leaves its map, so the next request tries again.
+  function remember<T>(map: Map<string, Promise<T>>, key: string, make: () => Promise<T>) {
+    let promise = map.get(key);
+    if (!promise) {
+      promise = make();
+      map.set(key, promise);
+      promise.catch(() => map.delete(key));
+    }
+    return promise;
+  }
+
+  function translate({ text, source, target }: TranslateMessage): Promise<string> {
+    const pair = `${source}>${target}`;
+    return remember(texts, `${pair}|${text}`, () =>
+      remember(translators, pair, () => {
+        const translator = factory();
+        if (!translator) return Promise.reject(new Error('Tradução não suportada neste navegador'));
+        return translator.create({ sourceLanguage: source, targetLanguage: target });
+      }).then((instance) => instance.translate(text)),
+    );
+  }
+
+  chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if ((message as { channel?: unknown } | null)?.channel !== TRANSLATE_CHANNEL) return false;
+    translate(message as TranslateMessage).then(
+      (text) => sendResponse({ ok: true, text } satisfies TranslateResponse),
+      (error: unknown) =>
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        } satisfies TranslateResponse),
+    );
+    return true;
+  });
+}
+
+/**
+ * Page side: downloads the language pack of a pair, reporting progress, and
+ * discards the instance. Not async for the same reason as translateBlock:
+ * `create` must run in the click's task.
+ */
+export function preparePair(
+  source: string,
+  target: string,
+  onProgress: (loaded: number) => void,
+): Promise<void> {
+  const translator = factory();
+  if (!translator) return Promise.reject(new Error('Tradução não suportada neste navegador'));
+  return translator
+    .create({
+      sourceLanguage: source,
+      targetLanguage: target,
+      monitor(monitor) {
+        monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
+      },
+    })
+    .then(() => undefined);
 }

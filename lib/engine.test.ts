@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngine } from './engine';
-import type { Engine, EngineStorage, SpeakOptions } from './engine';
+import type { Engine, EngineDeps, EngineStorage, SpeakOptions } from './engine';
 import type { Block, Cursor, PlaybackState, Prefs } from './types';
 
 function block(id: string, paragraphs: string[][], lang = 'pt-BR'): Block {
@@ -30,7 +30,7 @@ interface SpeakCall {
   cursorAtSpeak: Cursor | null;
 }
 
-function harness(blocks: Block[] = sampleBlocks()) {
+function harness(blocks: Block[] = sampleBlocks(), translate?: EngineDeps['translate']) {
   const store = {
     blocks,
     cursor: null as Cursor | null,
@@ -76,6 +76,7 @@ function harness(blocks: Block[] = sampleBlocks()) {
     broadcast: (state) => {
       states.push(state);
     },
+    translate,
   });
 
   return { engine, store, storage, speakCalls, stop, states };
@@ -571,5 +572,107 @@ describe('oversized sentences', () => {
 
     expect(h.speakCalls).toHaveLength(2);
     expect(h.store.cursor).toEqual(cursorOf('a', 0, 1));
+  });
+});
+
+describe('book translation on the fly', () => {
+  /** Sample blocks marked as book chapters, written in English. */
+  function book(): Block[] {
+    return sampleBlocks().map((b) => ({ ...b, lang: 'en', kinds: b.paragraphs.map(() => 'p' as const) }));
+  }
+
+  function bookHarness(tab: Prefs['activeTab'], translate?: EngineDeps['translate']) {
+    const t = harness(book(), translate);
+    t.store.prefs = { ...t.store.prefs, activeTab: tab, voiceByLang: { 'pt-BR': 'Luciana', en: 'Samantha' } };
+    return t;
+  }
+
+  const fakeTranslate = () => vi.fn(async (text: string) => `T:${text}`);
+
+  it('speaks the translated sentence in the target language, cursor persisted first', async () => {
+    const translate = fakeTranslate();
+    const t = bookHarness('translation', translate);
+
+    await t.engine.play();
+
+    expect(translate).toHaveBeenCalledWith('a0.', 'en', 'pt-BR');
+    expect(t.speakCalls).toHaveLength(1);
+    expect(t.speakCalls[0]).toMatchObject({
+      text: 'T:a0.',
+      options: { lang: 'pt-BR', voiceName: 'Luciana' },
+      cursorAtSpeak: cursorOf('a', 0, 0),
+    });
+  });
+
+  it('speaks the original without translating on the original tab', async () => {
+    const translate = fakeTranslate();
+    const t = bookHarness('original', translate);
+
+    await t.engine.play();
+
+    expect(translate).not.toHaveBeenCalled();
+    expect(t.speakCalls[0]).toMatchObject({ text: 'a0.', options: { lang: 'en' } });
+  });
+
+  it('leaves a block without kinds to the stored-translation rule', async () => {
+    const translate = fakeTranslate();
+    const t = harness(sampleBlocks(), translate);
+    t.store.prefs = { ...t.store.prefs, activeTab: 'translation' };
+
+    await t.engine.play();
+
+    expect(translate).not.toHaveBeenCalled();
+    expect(t.speakCalls[0]).toMatchObject({ text: 'a0.', options: { lang: 'pt-BR' } });
+  });
+
+  it('prefetches the next book sentence when a translated one starts', async () => {
+    const translate = fakeTranslate();
+    const t = bookHarness('translation', translate);
+
+    await t.engine.play();
+
+    expect(translate.mock.calls.map((c) => c[0])).toEqual(['a0.', 'a1.']);
+  });
+
+  it.each(['pause', 'stop', 'seek'] as const)('drops a pending translation on %s', async (command) => {
+    let release!: (text: string) => void;
+    const translate = fakeTranslate();
+    translate.mockImplementationOnce(() => new Promise<string>((resolve) => (release = resolve)));
+    const t = bookHarness('translation', translate);
+
+    const playing = t.engine.play();
+    await vi.waitFor(() => expect(translate).toHaveBeenCalled());
+    if (command === 'seek') await t.engine.seek(cursorOf('b', 0, 0));
+    else await t.engine[command]();
+    release('T:stale');
+    await playing;
+
+    expect(t.speakCalls.map((c) => c.text)).not.toContain('T:stale');
+    if (command === 'seek') expect(t.speakCalls.map((c) => c.text)).toEqual(['T:b0.']);
+    else expect(t.speakCalls).toEqual([]);
+  });
+
+  it('stops with the translation error and keeps the cursor on the sentence', async () => {
+    const t = bookHarness('translation', async () => {
+      throw new Error('modelo indisponível');
+    });
+    t.store.cursor = cursorOf('a', 0, 1);
+
+    await t.engine.play();
+
+    expect(t.speakCalls).toEqual([]);
+    expect(await t.engine.getState()).toEqual({
+      playing: false,
+      cursor: cursorOf('a', 0, 1),
+      error: 'Falha na tradução: modelo indisponível',
+    });
+  });
+
+  it('reads the book in the original when no translator is wired', async () => {
+    const t = bookHarness('translation');
+
+    await t.engine.play();
+
+    expect(t.speakCalls[0]).toMatchObject({ text: 'a0.', options: { lang: 'en' } });
   });
 });

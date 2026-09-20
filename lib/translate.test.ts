@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { availability, hashText, isStale, translateBlock, translationSupport } from './translate';
+import {
+  TRANSLATE_CHANNEL,
+  availability,
+  hashText,
+  isStale,
+  preparePair,
+  requestTranslation,
+  serveTranslations,
+  translateBlock,
+  translationSupport,
+} from './translate';
 import type { Block } from './types';
 
 function block(overrides: Partial<Block> = {}): Block {
@@ -239,5 +249,103 @@ describe('isStale', () => {
         }),
       ),
     ).toBe(true);
+  });
+});
+
+type Listener = (message: unknown, sender: unknown, sendResponse: (response: unknown) => void) => unknown;
+
+/** Stubs chrome.runtime/offscreen; `ask` sends a message to the served listener and awaits its answer. */
+function stubChrome(sendMessage = vi.fn()) {
+  const listeners: Listener[] = [];
+  vi.stubGlobal('chrome', {
+    runtime: { sendMessage, onMessage: { addListener: (fn: Listener) => listeners.push(fn) } },
+    offscreen: { hasDocument: vi.fn(async () => true) },
+  });
+  const ask = (message: unknown) =>
+    new Promise((resolve) => {
+      const handled = listeners[0]?.(message, {}, resolve);
+      if (!handled) resolve('ignored');
+    });
+  const request = (text: string, source = 'en', target = 'pt') =>
+    ask({ channel: TRANSLATE_CHANNEL, text, source, target });
+  return { ask, request, sendMessage };
+}
+
+describe('serveTranslations', () => {
+  it('answers translate requests and ignores other channels', async () => {
+    fakeTranslator('Olá.');
+    const chrome = stubChrome();
+    serveTranslations();
+    expect(await chrome.request('Hello.')).toEqual({ ok: true, text: 'Olá.' });
+    expect(await chrome.ask({ channel: 'local-tts', type: 'stop' })).toBe('ignored');
+  });
+
+  it('translates the same sentence of the same pair only once', async () => {
+    const api = fakeTranslator();
+    const chrome = stubChrome();
+    serveTranslations();
+    await chrome.request('Hello.');
+    await chrome.request('Hello.');
+    expect(api.translate).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates one Translator per language pair', async () => {
+    const api = fakeTranslator();
+    const chrome = stubChrome();
+    serveTranslations();
+    await chrome.request('One.');
+    await chrome.request('Two.');
+    expect(api.create).toHaveBeenCalledTimes(1);
+    await chrome.request('One.', 'en', 'de');
+    expect(api.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('answers the failure and retries on the next request', async () => {
+    const api = fakeTranslator('Olá.');
+    api.translate.mockRejectedValueOnce(new Error('modelo caiu'));
+    const chrome = stubChrome();
+    serveTranslations();
+    expect(await chrome.request('Hello.')).toEqual({ ok: false, error: 'modelo caiu' });
+    expect(await chrome.request('Hello.')).toEqual({ ok: true, text: 'Olá.' });
+    expect(api.translate).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries creating the Translator after create failed', async () => {
+    const api = fakeTranslator('Olá.');
+    api.create.mockRejectedValueOnce(new Error('download recusado'));
+    const chrome = stubChrome();
+    serveTranslations();
+    expect(await chrome.request('Hello.')).toEqual({ ok: false, error: 'download recusado' });
+    expect(await chrome.request('Hello.')).toEqual({ ok: true, text: 'Olá.' });
+  });
+});
+
+describe('requestTranslation', () => {
+  it('sends the request on the translate channel and resolves with the text', async () => {
+    const chrome = stubChrome(vi.fn(async () => ({ ok: true, text: 'Olá.' })));
+    expect(await requestTranslation('Hello.', 'en', 'pt')).toBe('Olá.');
+    expect(chrome.sendMessage).toHaveBeenCalledWith({
+      channel: TRANSLATE_CHANNEL,
+      text: 'Hello.',
+      source: 'en',
+      target: 'pt',
+    });
+  });
+
+  it('rejects with the error message of a failed answer', async () => {
+    stubChrome(vi.fn(async () => ({ ok: false, error: 'modelo caiu' })));
+    await expect(requestTranslation('Hello.', 'en', 'pt')).rejects.toThrow('modelo caiu');
+  });
+});
+
+describe('preparePair', () => {
+  it('creates the pair synchronously and forwards the download progress', async () => {
+    const api = fakeTranslator();
+    const progress: number[] = [];
+    const preparing = preparePair('en', 'pt-BR', (loaded) => progress.push(loaded));
+    expect(api.create).toHaveBeenCalledTimes(1);
+    await preparing;
+    expect(api.create.mock.calls[0]?.[0]).toMatchObject({ sourceLanguage: 'en', targetLanguage: 'pt-BR' });
+    expect(progress).toEqual([0.5]);
   });
 });

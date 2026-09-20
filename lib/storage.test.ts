@@ -3,6 +3,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   appendBlock,
   clearBlocks,
+  deleteDocument,
   getBlocks,
   getCursor,
   getDocuments,
@@ -229,6 +230,34 @@ describe('library documents', () => {
     expect((await getDocuments()).map((d) => d.id)).toEqual(['c', 'b', 'a']);
   });
 
+  it('keeps the existing cover when re-saving a document without one', async () => {
+    await saveDocument({ ...toLibraryDocument([block('a', 'um')], 100), cover: 'data:image/png;base64,AAA' });
+
+    await saveDocument(toLibraryDocument([block('a', 'um'), block('b', 'dois')], 200));
+
+    const docs = await getDocuments();
+    expect(docs).toHaveLength(1);
+    expect(docs[0]!.cover).toBe('data:image/png;base64,AAA');
+  });
+
+  it('replaces the existing cover when the new document has one', async () => {
+    await saveDocument({ ...toLibraryDocument([block('a', 'um')], 100), cover: 'data:image/png;base64,AAA' });
+
+    await saveDocument({ ...toLibraryDocument([block('a', 'um')], 200), cover: 'data:image/jpeg;base64,BBB' });
+
+    const docs = await getDocuments();
+    expect(docs).toHaveLength(1);
+    expect(docs[0]!.cover).toBe('data:image/jpeg;base64,BBB');
+  });
+
+  it('saves a new document without a cover as-is', async () => {
+    const blocks = [block('a', 'um')];
+
+    await saveDocument(toLibraryDocument(blocks, 100));
+
+    expect((await getDocuments())[0]).toEqual({ id: 'a', name: 'a', blocks, savedAt: 100 });
+  });
+
   it('returns reason "quota" and keeps the previous library when the write fails', async () => {
     await saveDocument(toLibraryDocument([block('a', 'um')], 100));
     const set = vi
@@ -236,6 +265,39 @@ describe('library documents', () => {
       .mockRejectedValue(new Error('QUOTA_BYTES quota exceeded'));
 
     const result = await saveDocument(toLibraryDocument([block('b', 'dois')], 200));
+    set.mockRestore();
+
+    expect(result).toEqual({ ok: false, reason: 'quota' });
+    expect((await getDocuments()).map((d) => d.id)).toEqual(['a']);
+  });
+
+  it('deletes only the requested id and keeps the other documents', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    await saveDocument(toLibraryDocument([block('b', 'dois')], 200));
+    await saveDocument(toLibraryDocument([block('c', 'tres')], 300));
+
+    const result = await deleteDocument('b');
+
+    expect(result).toEqual({ ok: true });
+    expect((await getDocuments()).map((d) => d.id)).toEqual(['c', 'a']);
+  });
+
+  it('keeps the library and reports success when the id is not stored', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+
+    const result = await deleteDocument('desconhecido');
+
+    expect(result).toEqual({ ok: true });
+    expect((await getDocuments()).map((d) => d.id)).toEqual(['a']);
+  });
+
+  it('returns reason "quota" and keeps the document when the delete write fails', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'um')], 100));
+    const set = vi
+      .spyOn(fakeBrowser.storage.local, 'set')
+      .mockRejectedValue(new Error('QUOTA_BYTES quota exceeded'));
+
+    const result = await deleteDocument('a');
     set.mockRestore();
 
     expect(result).toEqual({ ok: false, reason: 'quota' });

@@ -73,11 +73,28 @@ export async function getDocuments(): Promise<LibraryDocument[]> {
   return (await documentsItem.getValue()).sort((a, b) => b.savedAt - a.savedAt);
 }
 
-/** Replaces the document with the same id, or adds it. */
+/** Replaces the document with the same id, or adds it. Keeps the stored cover when the incoming document has none. */
 export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
-  const docs = (await documentsItem.getValue()).filter((d) => d.id !== doc.id);
+  const docs = await documentsItem.getValue();
+  const existing = docs.find((d) => d.id === doc.id);
+  const saved =
+    doc.cover === undefined && existing?.cover !== undefined
+      ? { ...doc, cover: existing.cover }
+      : doc;
   try {
-    await documentsItem.setValue([...docs, doc]);
+    await documentsItem.setValue([...docs.filter((d) => d.id !== doc.id), saved]);
+  } catch {
+    // Quota error: nothing was written, so the previous library still stands.
+    return { ok: false, reason: 'quota' };
+  }
+  return { ok: true };
+}
+
+/** Removing an id that is not stored is not an error. */
+export async function deleteDocument(id: string): Promise<SetResult> {
+  const docs = await documentsItem.getValue();
+  try {
+    await documentsItem.setValue(docs.filter((d) => d.id !== id));
   } catch {
     // Quota error: nothing was written, so the previous library still stands.
     return { ok: false, reason: 'quota' };

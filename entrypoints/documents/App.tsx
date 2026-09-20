@@ -1,5 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { CircleAlert, FileText, Library, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  FileText,
+  Library,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import BlockList from '../../components/BlockList';
 import Controls from '../../components/Controls';
 import DocumentActions from '../../components/DocumentActions';
@@ -20,6 +28,8 @@ export default function App() {
   const { state, blocks, prefs } = useReader();
   const [tab, setTab] = useState<'file' | 'library'>('file');
   const [zoom, setZoom] = useState(2);
+  // Book pages: one block (chapter) at a time when any block carries kinds.
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     // This page is the reader here: the extension's side panel stays hidden on its tab.
@@ -29,7 +39,19 @@ export default function App() {
     });
   }, []);
 
+  // A new document starts at its first page. Declared before the cursor effect
+  // so, when both fire together, the cursor's page wins.
+  useEffect(() => setPage(0), [blocks[0]?.id]);
+
+  // The page follows the block being read.
+  useEffect(() => {
+    const index = blocks.findIndex((block) => block.id === state.cursor?.blockId);
+    if (index >= 0) setPage(index);
+  }, [state.cursor?.blockId]);
+
   const empty = blocks.length === 0;
+  const paged = blocks.some((block) => block.kinds);
+  const current = Math.max(0, Math.min(page, blocks.length - 1));
   const activeBlock = blocks.find((block) => block.id === state.cursor?.blockId) ?? blocks[0];
   const activeLang = activeBlock?.lang ?? navigator.language;
   const translationLang = activeBlock?.translation?.target ?? prefs?.targetLang ?? activeLang;
@@ -48,6 +70,27 @@ export default function App() {
             onClick={() => setZoom(next)}
           >
             {step < 0 ? <ZoomOut /> : <ZoomIn />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  function pageButton(step: -1 | 1) {
+    const label = step < 0 ? 'Página anterior' : 'Próxima página';
+    const next = current + step;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label={label}
+            disabled={next < 0 || next >= blocks.length}
+            onClick={() => setPage(next)}
+          >
+            {step < 0 ? <ChevronLeft /> : <ChevronRight />}
           </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
@@ -101,6 +144,15 @@ export default function App() {
                     <h2 className="flex-1 truncate text-lg font-semibold">
                       {blocks[0]!.sourceTitle}
                     </h2>
+                    {paged && (
+                      <>
+                        {pageButton(-1)}
+                        <span className="text-muted-foreground tabular-nums">
+                          {current + 1} / {blocks.length}
+                        </span>
+                        {pageButton(1)}
+                      </>
+                    )}
                     {zoomButton(-1)}
                     {zoomButton(1)}
                   </header>
@@ -117,6 +169,8 @@ export default function App() {
                     activeTab={prefs.activeTab}
                     playing={state.playing}
                     textSize={ZOOM[zoom]}
+                    visible={paged ? blocks[current]!.id : undefined}
+                    bookView
                   />
                 )}
               </section>

@@ -19,6 +19,8 @@ export interface Translation {
   sourceTextHash: string;
 }
 
+export type ParagraphKind = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'quote' | 'li';
+
 export interface Block {
   /** crypto.randomUUID(), stable for as long as the block exists. */
   id: string;
@@ -30,6 +32,10 @@ export interface Block {
   text: string;
   /** Derived from text by segmentBlock(). */
   paragraphs: Paragraph[];
+  /** EPUB chapters only: one kind per paragraph, aligned by index. Its presence marks a book chapter. */
+  kinds?: ParagraphKind[];
+  /** EPUB chapters only: the book's document id and the chapter's path inside the zip. */
+  epub?: { book: string; path: string };
   translation?: Translation;
   createdAt: number;
 }

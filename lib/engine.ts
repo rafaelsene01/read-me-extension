@@ -61,6 +61,8 @@ export interface EngineDeps {
   broadcast: (state: PlaybackState) => void | Promise<void>;
   /** Optional provider of the selected engine's model status for the panel. */
   getTtsStatus?: () => TtsRuntimeStatus | undefined;
+  /** Translates a book sentence on the fly (translation tab). Absent: books are read in the original. */
+  translate?: (text: string, source: string, target: string) => Promise<string>;
 }
 
 export interface Engine {
@@ -82,7 +84,7 @@ export interface Engine {
   getState(): Promise<PlaybackState>;
 }
 
-export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDeps): Engine {
+export function createEngine({ tts, storage, broadcast, getTtsStatus, translate }: EngineDeps): Engine {
   let playing = false;
   let error: string | null = null;
   /** Set before we stop the engine ourselves, so the resulting event is not reported. */
@@ -95,6 +97,8 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
    * which case the next end event moves on to the following sentence.
    */
   let pending: { chunks: string[]; options: SpeakOptions } | null = null;
+  /** Bumped by every command that moves or stops reading: a translation that resolves late is dropped. */
+  let generation = 0;
 
   async function publish(): Promise<void> {
     await broadcast({ playing, cursor: await storage.getCursor(), error, tts: getTtsStatus?.() });
@@ -110,13 +114,30 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
   async function speakAt(cursor: Cursor, blocks: Block[]): Promise<void> {
     const sentence = sentenceAt(blocks, cursor);
     if (!sentence) return finish(blocks);
+    const gen = ++generation;
 
     // The cursor is persisted BEFORE speaking: the service worker can be killed
     // mid-sentence and must wake up knowing which sentence is in the air.
     await storage.setCursor(cursor);
 
     const prefs = await storage.getPrefs();
-    const lang = blocks.find((b) => b.id === cursor.blockId)?.lang ?? prefs.targetLang;
+    const block = blocks.find((b) => b.id === cursor.blockId);
+    // Book chapters have no stored translation: on the translation tab each
+    // sentence is translated right before it is spoken, in the target voice.
+    const translating = !!(translate && block?.kinds && prefs.activeTab === 'translation');
+    let text = sentence.text;
+    if (translating) {
+      try {
+        text = await translate!(sentence.text, block!.lang, prefs.targetLang);
+      } catch (err) {
+        if (gen === generation) {
+          await halt(`Falha na tradução: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        return;
+      }
+      if (gen !== generation) return;
+    }
+    const lang = translating ? prefs.targetLang : (block?.lang ?? prefs.targetLang);
     const options: SpeakOptions = {
       lang,
       rate: prefs.rate,
@@ -125,11 +146,21 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
 
     // A sentence above the engine limit is spoken piece by piece; the cursor
     // stays on it until the last piece ends.
-    const [head, ...rest] = chunkSentence(sentence.text, TTS_MAX_CHARS);
+    const [head, ...rest] = chunkSentence(text, TTS_MAX_CHARS);
     pending = rest.length > 0 ? { chunks: rest, options } : null;
 
     await publish();
-    await safeSpeak(head ?? sentence.text, options);
+    await safeSpeak(head ?? text, options);
+
+    // Warm the host cache with the next book sentence; a failure surfaces when it is spoken.
+    if (translating) {
+      const next = nextCursor(blocks, cursor);
+      const nextBlock = next && blocks.find((b) => b.id === next.blockId);
+      const nextSentence = next && sentenceAt(blocks, next);
+      if (nextBlock?.kinds && nextSentence) {
+        translate!(nextSentence.text, nextBlock.lang, prefs.targetLang).catch(() => {});
+      }
+    }
   }
 
   async function finish(blocks: Block[]): Promise<void> {
@@ -176,6 +207,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
     },
 
     async pause() {
+      generation++;
       expectInterrupt = true;
       pending = null;
       playing = false;
@@ -185,6 +217,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
     },
 
     async stop() {
+      generation++;
       expectInterrupt = true;
       pending = null;
       playing = false;
@@ -195,6 +228,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
     },
 
     async seek(cursor: Cursor) {
+      generation++;
       await storage.setCursor(cursor);
       if (!playing) return publish();
 
@@ -240,6 +274,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
     },
 
     async setTtsEngine(engine: TtsEngineId) {
+      generation++;
       if (playing) {
         expectInterrupt = true;
         pending = null;
@@ -265,6 +300,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus }: EngineDe
 
       // The sentence being read is gone: stop rather than jump mid-speech.
       if (playing) {
+        generation++;
         expectInterrupt = true;
         pending = null;
         playing = false;

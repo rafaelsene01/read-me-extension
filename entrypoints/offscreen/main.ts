@@ -1,4 +1,5 @@
 import { AudioPlayer } from '../../lib/audio/player';
+import { serveTranslations, TRANSLATE_CHANNEL } from '../../lib/translate';
 import { isLocalTtsCommand, sendLocalTts, type LocalTtsCommand, type LocalTtsEventBody } from '../../lib/tts/protocol';
 import type { LocalEngineId } from '../../lib/tts/types';
 import type { WorkerCommand, WorkerEvent } from '../../lib/tts/worker-protocol';
@@ -154,5 +155,14 @@ function handleCommand(command: LocalTtsCommand): void {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if (!isLocalTtsCommand(message)) return false;
   handleCommand(message);
+  return false;
+});
+
+serveTranslations();
+
+// A translated reading with the system voice only talks to this document through
+// translation requests: keep it open while they arrive. serveTranslations answers.
+chrome.runtime.onMessage.addListener((message: unknown) => {
+  if ((message as { channel?: unknown } | null)?.channel === TRANSLATE_CHANNEL) armIdleClose();
   return false;
 });

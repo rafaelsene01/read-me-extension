@@ -2,6 +2,7 @@ import { captureTab, isCapturable } from '../lib/capture';
 import { createEngine, type Engine } from '../lib/engine';
 import { broadcastState, onCommand } from '../lib/messages';
 import * as store from '../lib/storage';
+import { requestTranslation } from '../lib/translate';
 import { createLocalTtsClient } from '../lib/tts/client';
 import { isLocalTtsEvent } from '../lib/tts/protocol';
 import { createTtsRouter, pickLocalVoice } from '../lib/tts/registry';
@@ -68,6 +69,7 @@ export default defineBackground(() => {
     broadcast: broadcastState,
     getTtsStatus: () =>
       selectedEngine === 'system' ? undefined : localClient.getStatus(selectedEngine),
+    translate: requestTranslation,
   });
 
   // Events coming back from the offscreen document.

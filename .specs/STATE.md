@@ -87,8 +87,8 @@ Stack: WXT 0.21 + React 19 + TypeScript, alvo Chromium (Chrome/Edge/Brave).
 
 ### AD-014 — EPUB vira capítulos no modelo de frases
 
-- **Status**: active
-- **Decisão**: Cada item do spine vira um `Block`; a formatação é só o tipo de cada parágrafo (`Block.kinds`: `h1`..`h6`, `p`, `quote`, `li`) renderizado com Tailwind. CSS, fontes e imagens do livro ficam fora.
+- **Status**: superseded em parte por AD-020 (exibição)
+- **Decisão**: Cada item do spine vira um `Block`; a formatação é só o tipo de cada parágrafo (`Block.kinds`: `h1`..`h6`, `p`, `quote`, `li`) renderizado com Tailwind. CSS, fontes e imagens do livro ficam fora. Capítulo de livro não é editável nem ganha tradução gravada (pedido do usuário); o `TranslatePanel` ignora blocos com `kinds`.
 - **Razão**: Council unânime. Seek, destaque, tradução, engine e MP3 dependem de `paragraphs`/`sentences`; CSS do livro é não confiável e conflita com o tema.
 
 ### AD-015 — Página = capítulo, só para livros
@@ -97,10 +97,10 @@ Stack: WXT 0.21 + React 19 + TypeScript, alvo Chromium (Chrome/Edge/Brave).
 - **Decisão**: A página Documentos mostra um bloco por vez quando o buffer tem algum bloco com `kinds`; a página segue o cursor quando ele muda de bloco. Demais buffers continuam empilhados.
 - **Razão**: Council (unânime em página = capítulo; 3 de 4 em só livros). Paginação por tela exigiria recalcular a cada zoom e quebraria o auto-scroll.
 
-### AD-016 — `fflate` + `DOMParser` para EPUB; `happy-dom` só nos testes
+### AD-016 — `fflate` + `DOMParser` para EPUB; `jsdom` só nos testes
 
 - **Status**: active
-- **Decisão**: `unzipSync` do `fflate` com filtro de entradas, XML/XHTML por `DOMParser` (XHTML inválido cai para `text/html`); `lib/epub.test.ts` roda em `happy-dom`.
+- **Decisão**: `unzipSync` do `fflate` com filtro de entradas, XML/XHTML por `DOMParser` (XHTML inválido cai para `text/html`); `lib/epub.test.ts` roda em `jsdom`.
 - **Razão**: Council unânime: parser zip à mão erra em data descriptors, zip64 e nomes; o `unzip` assíncrono do `fflate` usa workers por blob URL, recusados pela CSP.
 
 ### AD-017 — Importar EPUB salva e abre; sem limite de 500k
@@ -108,6 +108,12 @@ Stack: WXT 0.21 + React 19 + TypeScript, alvo Chromium (Chrome/Edge/Brave).
 - **Status**: active
 - **Decisão**: A importação grava o livro (com capa em data URL) em `local:documents` e abre pelo `useReplaceGuard`. `MAX_BUFFER_CHARS` não se aplica ao EPUB. `saveDocument` preserva a capa existente.
 - **Razão**: Council 3 de 4 (dissent: só salvar) e unânime no limite: romances passam de 500k, `unlimitedStorage` já existe e `setBlocks` não aplica o limite.
+
+### AD-019 — Livro traduzido em tempo real, frase a frase, no offscreen
+
+- **Status**: active
+- **Decisão**: Com a aba "Ouvir traduzido" (`activeTab = 'translation'`), o engine traduz cada frase de bloco com `kinds` logo antes de falar, pelo canal `translate` servido no documento offscreen (um `Translator` por par, cache em memória, prefetch da próxima frase). A tela fica no original; nada é gravado. Depende do spike AD-018.
+- **Razão**: Council 3 de 4 em granularidade e em host. A Translator API não existe em workers (nem no service worker); o offscreen mantém a leitura com a página fechada; frase a frase mantém cursor e destaque 1:1.
 
 ---
 
@@ -120,3 +126,16 @@ Stack: WXT 0.21 + React 19 + TypeScript, alvo Chromium (Chrome/Edge/Brave).
 - **Próximo passo**: UAT manual no Chrome (18 itens listados em `validation.md`), depois commitar seguindo `COMMITS.md`.
 - **Decisão pendente do usuário**: `components/CaptureBar.tsx` pede `<all_urls>` em vez do host específico, porque sem a permissão `tabs` o Chrome oculta a URL da aba. Funciona, mas amplia a permissão de forma permanente, contra a intenção da AD-005.
 - **Lições**: 6 candidatas registradas em `.specs/lessons.json` (`lessons.py list`).
+
+### AD-020 — Capítulo exibido com o HTML e o CSS do livro
+
+- **Status**: active
+- **Decisão**: Na página Documentos, capítulo com `epub` é exibido com o HTML original, o CSS e as imagens do livro num Shadow DOM, a partir dos bytes do `.epub` guardados no Cache Storage. Cada frase de `block.paragraphs` é envolvida em `span.rm-s[data-s]` para clique e destaque. Scripts, links navegáveis e recursos remotos são removidos. Modelo de frases, engine, tradução ao vivo e MP3 não mudam; painel lateral segue com `kinds`.
+- **Razão**: Pedido do usuário depois de testar livros reais: `kinds` não formata EPUBs convertidos (tudo `p.calibre1`, código como imagem). Revê o council Q1 (AD-014) só na exibição.
+
+### AD-021 — Excluir da biblioteca apaga também os bytes do livro
+
+- **Status**: active
+- **Decisão**: A aba Biblioteca ganha Excluir por item, com diálogo de confirmação; a exclusão remove o item de `local:documents` e a entrada do livro no Cache Storage, sem tocar no buffer de leitura.
+- **Razão**: Pedido do usuário. Apagar só o item deixaria os bytes do `.epub` órfãos no cache, ocupando espaço sem nada que os referencie.
+
