@@ -8,6 +8,7 @@ import { isLocalTtsEvent } from '../lib/tts/protocol';
 import { createTtsRouter, pickLocalVoice } from '../lib/tts/registry';
 import { createSystemTts } from '../lib/tts/system';
 import type { TtsEngineId } from '../lib/tts/types';
+import type { Prefs } from '../lib/types';
 
 export default defineBackground(() => {
   // Clicking the toolbar icon opens the side panel.
@@ -108,13 +109,10 @@ export default defineBackground(() => {
         await engine.setRate(command.rate, command.commit);
         break;
       case 'setVoice':
-        await engine.setVoice(command.lang, command.voiceName);
+        await engine.setVoice(command.lang, command.voiceName, command.engine);
         break;
       case 'setTtsEngine':
-        selectedEngine = command.engine;
         await engine.setTtsEngine(command.engine);
-        // Back on the system voice: free the neural model's RAM/VRAM.
-        if (command.engine === 'system') localClient.dispose();
         break;
       case 'downloadTtsModel':
         // Not awaited: the panel follows the download through status broadcasts.
@@ -130,5 +128,16 @@ export default defineBackground(() => {
   // A removed or edited block can leave the cursor dangling.
   chrome.storage.local.onChanged.addListener((changes) => {
     if (changes.blocks) void engine.blocksChanged();
+
+    // The selected engine follows the pref instead of one command: picking a
+    // voice in the panel switches engine too, and a mirror that only
+    // setTtsEngine updated left the status of the running download unreported.
+    const next = (changes.prefs?.newValue as Partial<Prefs> | undefined)?.ttsEngine;
+    if (!next || next === selectedEngine) return;
+    selectedEngine = next;
+    // Back on the system voice: free the neural model's RAM/VRAM.
+    if (next === 'system') localClient.dispose();
+    // setPrefs already published a state; that one carried the old engine.
+    void engine.getState().then(broadcastState);
   });
 });

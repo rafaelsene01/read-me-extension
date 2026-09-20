@@ -43,6 +43,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import LoadingOverlay, { LoadingMark } from './LoadingOverlay';
 import { useReplaceGuard } from './useReplaceGuard';
 import { deleteBook } from '../lib/book-assets';
 import { documentKind, type LibraryDocument } from '../lib/document';
@@ -77,12 +78,15 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
   const [pendingDelete, setPendingDelete] = useState<LibraryDocument | null>(null);
   const [pendingFolderDelete, setPendingFolderDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The library is read from storage: until it answers, it is not "empty". */
+  const [loading, setLoading] = useState(true);
   const guard = useReplaceGuard();
 
   useEffect(() => {
     const load = (): void => {
-      void getDocuments().then(setDocs);
-      void getFolders().then(setFolders);
+      void Promise.all([getDocuments().then(setDocs), getFolders().then(setFolders)]).finally(() =>
+        setLoading(false),
+      );
     };
     load();
     // Saves happen from other views too, so follow the store.
@@ -326,7 +330,17 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
         </ul>
       )}
 
-      {shown.length === 0 ? (
+      <LoadingOverlay open={guard.opening} label="Abrindo documento…" />
+
+      {loading ? (
+        <div
+          role="status"
+          className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-8 text-muted-foreground"
+        >
+          <LoadingMark />
+          Carregando biblioteca…
+        </div>
+      ) : shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
           <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
             <Library className="size-5" />

@@ -115,6 +115,30 @@
       box-shadow: 0 0 0 12px transparent;
     }
   }
+
+  /* Waiting for a document: the lines of a page lighting up one after the
+     other, the way the sentence being read does. Its own mark instead of a
+     spinner, because what is being waited for is text. */
+  --animate-reading: rm-reading 1.4s ease-in-out infinite;
+
+  @keyframes rm-reading {
+    0%,
+    100% {
+      opacity: 0.25;
+      transform: scaleX(0.72);
+    }
+    40% {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-reading {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 @layer base {

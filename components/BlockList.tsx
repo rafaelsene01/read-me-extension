@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Check, CircleAlert, Languages, Pencil, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +16,6 @@ import { cn } from '@/lib/utils';
 import BookChapter from './BookChapter';
 import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
-import PdfPage from './PdfPage';
 import { LANGS } from './TranslatePanel';
 import { applyEdit, applyLang } from '../lib/edit';
 import { sendCommand } from '../lib/messages';
@@ -24,6 +23,11 @@ import { revealElement } from '../lib/scroll';
 import { removeBlock, setBlocks } from '../lib/storage';
 import { isStale } from '../lib/translate';
 import type { Block, Cursor, Paragraph, ParagraphKind, Prefs } from '../lib/types';
+
+// pdf.js weighs ~900 kB and only a rendered PDF page needs it. Loaded when one
+// is actually shown, so it stops riding along in the side panel, which never
+// renders a page at all.
+const PdfPage = lazy(() => import('./PdfPage'));
 
 interface BlockListProps {
   blocks: Block[];
@@ -300,13 +304,16 @@ export default function BlockList({
               ) : paragraphs === null ? (
                 <p className="text-muted-foreground">Bloco ainda não traduzido.</p>
               ) : bookView && block.pdf ? (
-                // Falls back to the extracted paragraphs when the file is no longer stored.
-                <PdfPage
-                  block={block}
-                  cursor={cursor}
-                  scale={scale}
-                  fallback={kindsView(block, paragraphs)}
-                />
+                // Falls back to the extracted paragraphs when the file is no longer
+                // stored, and shows the same while pdf.js is being fetched.
+                <Suspense fallback={<>{kindsView(block, paragraphs)}</>}>
+                  <PdfPage
+                    block={block}
+                    cursor={cursor}
+                    scale={scale}
+                    fallback={kindsView(block, paragraphs)}
+                  />
+                </Suspense>
               ) : bookView && block.epub ? (
                 // Falls back to the paragraphs when the book is not in the cache (P1-E AC10).
                 <BookChapter

@@ -25,7 +25,7 @@ export type Command =
   | { type: 'stop' }
   | { type: 'seek'; cursor: Cursor }
   | { type: 'setRate'; rate: number; commit?: boolean }
-  | { type: 'setVoice'; lang: string; voiceName: string }
+  | { type: 'setVoice'; lang: string; voiceName: string; engine?: TtsEngineId }
   | { type: 'setTtsEngine'; engine: TtsEngineId }
   | { type: 'downloadTtsModel'; engine: LocalEngineId }
   | { type: 'capture'; mode: CaptureMode }

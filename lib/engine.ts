@@ -32,6 +32,8 @@ export interface EngineStorage {
   getBlocks(): Promise<Block[]>;
   getCursor(): Promise<Cursor | null>;
   setCursor(cursor: Cursor | null): Promise<void>;
+  /** Where a document was left, by document id; null when it was never read. */
+  getProgress(id: string): Promise<Cursor | null>;
   getPrefs(): Promise<Prefs>;
   setPrefs(patch: Partial<Prefs>): Promise<void>;
 }
@@ -75,7 +77,12 @@ export interface Engine {
    * sentence restarted on an engine that cannot change speed live.
    */
   setRate(rate: number, commit?: boolean): Promise<void>;
-  setVoice(lang: string, voiceName: string): Promise<void>;
+  /**
+   * Stores the manual voice choice. `engine` is the engine the voice belongs
+   * to: the picker lists every engine at once, so choosing a voice also
+   * switches to its engine, stopping playback like setTtsEngine does.
+   */
+  setVoice(lang: string, voiceName: string, engine?: TtsEngineId): Promise<void>;
   /** Switches the speech engine, stopping playback while keeping the cursor. */
   setTtsEngine(engine: TtsEngineId): Promise<void>;
   /** Called after the buffer changes so a dangling cursor is repositioned. */
@@ -102,6 +109,16 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
 
   async function publish(): Promise<void> {
     await broadcast({ playing, cursor: await storage.getCursor(), error, tts: getTtsStatus?.() });
+  }
+
+  /** Stop the engine in use, keeping the cursor: what switching engines needs. */
+  async function stopForSwitch(): Promise<void> {
+    generation++;
+    if (!playing) return;
+    expectInterrupt = true;
+    pending = null;
+    playing = false;
+    await tts.stop();
   }
 
   /** Buffer seen through the active tab; everything downstream uses this view. */
@@ -255,32 +272,44 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
       await publish();
     },
 
-    async setVoice(lang: string, voiceName: string) {
-      // The picker shows the voices of the selected engine, so the choice is stored for it.
+    async setVoice(lang: string, voiceName: string, engine?: TtsEngineId) {
       const prefs = await storage.getPrefs();
-      const engine = prefs.ttsEngine;
-      if (engine === 'system') {
-        await storage.setPrefs({
-          voiceByLang: { ...prefs.voiceByLang, [lang]: voiceName },
-          voiceByEngine: { ...prefs.voiceByEngine, system: { ...prefs.voiceByEngine.system, [lang]: voiceName } },
-        });
-      } else {
-        const key = localVoiceKey(engine, lang);
-        await storage.setPrefs({
-          voiceByEngine: { ...prefs.voiceByEngine, [engine]: { ...prefs.voiceByEngine[engine], [key]: voiceName } },
-        });
+      // The picker lists every engine, so the voice says which one to store it
+      // under; without it the choice belongs to the engine already selected.
+      const target = engine ?? prefs.ttsEngine;
+      const next: Partial<Prefs> =
+        target === 'system'
+          ? {
+              voiceByLang: { ...prefs.voiceByLang, [lang]: voiceName },
+              voiceByEngine: {
+                ...prefs.voiceByEngine,
+                system: { ...prefs.voiceByEngine.system, [lang]: voiceName },
+              },
+            }
+          : {
+              voiceByEngine: {
+                ...prefs.voiceByEngine,
+                [target]: {
+                  ...prefs.voiceByEngine[target],
+                  [localVoiceKey(target, lang)]: voiceName,
+                },
+              },
+            };
+
+      if (target === prefs.ttsEngine) {
+        await storage.setPrefs(next);
+        await publish();
+        return;
       }
+      // A voice of another engine switches to it, which must not leave the
+      // previous adapter talking.
+      await stopForSwitch();
+      await storage.setPrefs({ ...next, ttsEngine: target });
       await publish();
     },
 
     async setTtsEngine(engine: TtsEngineId) {
-      generation++;
-      if (playing) {
-        expectInterrupt = true;
-        pending = null;
-        playing = false;
-        await tts.stop();
-      }
+      await stopForSwitch();
       await storage.setPrefs({ ttsEngine: engine });
       await publish();
     },
@@ -291,7 +320,21 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
       lastBlocks = blocks;
 
       const cursor = await storage.getCursor();
-      const repositioned = reconcile(blocks, cursor, previous);
+      // Another document is in the buffer: its reading picks up where it was
+      // left, instead of repositioning the cursor of the one that is gone.
+      // The engine does this itself because it owns the cursor — a panel
+      // writing it straight to storage races this very handler and is never
+      // broadcast, so the restored position was both overwritten and unseen.
+      const opened =
+        !!blocks[0] &&
+        blocks[0].id !== previous?.[0]?.id &&
+        !(cursor && blocks.some((block) => block.id === cursor.blockId));
+      const restored = opened ? await storage.getProgress(blocks[0]!.id) : null;
+      const repositioned = opened
+        ? restored && blocks.some((block) => block.id === restored.blockId)
+          ? restored
+          : firstCursor(blocks)
+        : reconcile(blocks, cursor, previous);
       const moved =
         repositioned?.blockId !== cursor?.blockId ||
         repositioned?.paraIndex !== cursor?.paraIndex ||

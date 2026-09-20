@@ -18,6 +18,8 @@ import type { TtsEngineId } from '../lib/tts/types';
 export interface VoiceOption {
   /** Value stored in prefs (system voice name or local voice id). */
   id: string;
+  /** Engine the voice belongs to; picking it also selects that engine. */
+  engine: TtsEngineId;
   name: string;
   /** Secondary text: language or preset id. */
   detail: string;
@@ -27,25 +29,30 @@ export interface VoiceOption {
 }
 
 interface TtsVoiceSelectProps {
-  engine: TtsEngineId;
   options: VoiceOption[];
+  /** Selected voice as `${engine}:${id}`; ids repeat across engines. */
   value: string | undefined;
   favorites: string[];
-  onChange: (id: string) => void;
+  onChange: (option: VoiceOption) => void;
 }
 
 const FAVORITES = 'Favoritas';
 /** Long lists (system voices) get a search box. */
 const SEARCH_FROM = 8;
 
+/** Key of a voice in prefs (favourites) and of the selection: engine plus id. */
+export function voiceKey(engine: TtsEngineId, id: string): string {
+  return `${engine}:${id}`;
+}
+
 /** Initial for the fallback, skipping the vendor prefix of system voices. */
 function initial(name: string): string {
   return name.replace(/^(Microsoft|Google|Apple)\s+/i, '').charAt(0).toUpperCase();
 }
 
-function VoiceAvatar({ option }: { option: VoiceOption }) {
+function VoiceAvatar({ option, className }: { option: VoiceOption; className?: string }) {
   return (
-    <Avatar className="size-6 bg-muted">
+    <Avatar className={cn('size-6 bg-muted', className)}>
       {option.avatar && <AvatarImage src={option.avatar} alt="" />}
       <AvatarFallback className="bg-primary/15 text-[10px] font-medium text-primary">
         {initial(option.name)}
@@ -55,52 +62,54 @@ function VoiceAvatar({ option }: { option: VoiceOption }) {
 }
 
 /**
- * Voice picker shared by every engine: avatar + name, starred voices on top.
- * Each row has its own star; favorites live in prefs as `${engine}:${id}`.
+ * The one voice picker: every engine in a single list, free (the system voices)
+ * before the pro ones, starred voices on top. Each row has its own star;
+ * favorites live in prefs as `${engine}:${id}`, which is also how the selected
+ * voice is identified.
  */
-export default function TtsVoiceSelect({ engine, options, value, favorites, onChange }: TtsVoiceSelectProps) {
+export default function TtsVoiceSelect({ options, value, favorites, onChange }: TtsVoiceSelectProps) {
   const [open, setOpen] = useState(false);
-  const key = (id: string) => `${engine}:${id}`;
-  const selected = options.find((option) => option.id === value);
+  const selected = options.find((option) => voiceKey(option.engine, option.id) === value);
 
+  // Insertion order is the order the caller built the options in (free, then
+  // pro); only the favorites are lifted out of it.
   const groups = new Map<string, VoiceOption[]>();
   for (const option of options) {
-    const group = favorites.includes(key(option.id)) ? FAVORITES : option.group;
+    const group = favorites.includes(voiceKey(option.engine, option.id)) ? FAVORITES : option.group;
     groups.set(group, [...(groups.get(group) ?? []), option]);
   }
   const ordered = [...groups].sort(([a], [b]) => Number(b === FAVORITES) - Number(a === FAVORITES));
 
-  const toggleFavorite = (id: string): void => {
-    const favorite = favorites.includes(key(id));
+  const toggleFavorite = (option: VoiceOption): void => {
+    const key = voiceKey(option.engine, option.id);
+    const favorite = favorites.includes(key);
     void setPrefs({
-      favoriteVoices: favorite ? favorites.filter((item) => item !== key(id)) : [...favorites, key(id)],
+      favoriteVoices: favorite ? favorites.filter((item) => item !== key) : [...favorites, key],
     });
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {/* Just the face of the voice: the name and its group are one press away. */}
       <PopoverTrigger asChild>
         <Button
           variant="outline"
+          size="icon"
           role="combobox"
           aria-expanded={open}
-          aria-label="Voz"
+          aria-label={selected ? `Voz: ${selected.name}` : 'Voz'}
+          title={selected ? `${selected.name} · ${selected.detail}` : 'Voz'}
           disabled={options.length === 0}
-          className="w-full justify-between px-2"
+          className="size-10 shrink-0 rounded-full p-0"
         >
           {selected ? (
-            <span className="flex min-w-0 items-center gap-2">
-              <VoiceAvatar option={selected} />
-              <span className="truncate">{selected.name}</span>
-              <span className="text-xs text-muted-foreground">{selected.detail}</span>
-            </span>
+            <VoiceAvatar option={selected} className="size-8" />
           ) : (
-            <span className="text-muted-foreground">Voz</span>
+            <ChevronsUpDown className="opacity-50" />
           )}
-          <ChevronsUpDown className="opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
+      <PopoverContent className="w-72 max-w-[calc(100vw-2rem)] p-0" align="start">
         <Command>
           {options.length >= SEARCH_FROM && <CommandInput placeholder="Buscar voz…" />}
           <CommandList>
@@ -108,20 +117,22 @@ export default function TtsVoiceSelect({ engine, options, value, favorites, onCh
             {ordered.map(([label, items]) => (
               <CommandGroup key={label} heading={label}>
                 {items.map((option) => {
-                  const favorite = favorites.includes(key(option.id));
+                  const key = voiceKey(option.engine, option.id);
+                  const favorite = favorites.includes(key);
                   return (
                     <CommandItem
-                      key={option.id}
-                      value={`${option.name} ${option.detail} ${option.id}`}
+                      key={key}
+                      // The group is searchable too: "kokoro" finds its voices.
+                      value={`${option.name} ${option.detail} ${option.group} ${option.id}`}
                       onSelect={() => {
-                        onChange(option.id);
+                        onChange(option);
                         setOpen(false);
                       }}
                     >
                       <VoiceAvatar option={option} />
                       <span className="truncate">{option.name}</span>
-                      <span className="text-xs text-muted-foreground">{option.detail}</span>
-                      <Check className={cn('ml-auto', option.id === value ? 'opacity-100' : 'opacity-0')} />
+                      <span className="truncate text-xs text-muted-foreground">{option.detail}</span>
+                      <Check className={cn('ml-auto', key === value ? 'opacity-100' : 'opacity-0')} />
                       <Button
                         variant="ghost"
                         size="icon-xs"
@@ -132,7 +143,7 @@ export default function TtsVoiceSelect({ engine, options, value, favorites, onCh
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => {
                           event.stopPropagation();
-                          toggleFavorite(option.id);
+                          toggleFavorite(option);
                         }}
                       >
                         <Star className={favorite ? 'fill-primary text-primary' : undefined} />

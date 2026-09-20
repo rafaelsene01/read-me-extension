@@ -18,6 +18,7 @@ import {
   setBlocks,
   setCursor,
   setPrefs,
+  touchDocument,
 } from './storage';
 import { toLibraryDocument } from './document';
 import type { Block } from './types';
@@ -119,6 +120,29 @@ describe('setBlocks', () => {
 
     expect(result).toEqual({ ok: false, reason: 'quota' });
     expect((await getBlocks()).map((b) => b.id)).toEqual(['a']);
+  });
+
+  it('writes the buffer back to the document it came from', async () => {
+    await saveDocument(toLibraryDocument([block('a', 'primeiro')]));
+
+    await setBlocks([{ ...block('a', 'primeiro'), lang: 'de' }]);
+
+    // Reopening the document must not have to work the language out again.
+    expect((await getDocuments())[0]?.blocks[0]?.lang).toBe('de');
+  });
+
+  it('keeps savedAt, so following the buffer does not reorder the library', async () => {
+    await saveDocument({ ...toLibraryDocument([block('a', 'primeiro')]), savedAt: 10 });
+
+    await setBlocks([{ ...block('a', 'primeiro'), lang: 'de' }]);
+
+    expect((await getDocuments())[0]?.savedAt).toBe(10);
+  });
+
+  it('does not file a buffer that is not a document of the library', async () => {
+    await setBlocks([block('a', 'primeiro')]);
+
+    expect(await getDocuments()).toEqual([]);
   });
 });
 
@@ -313,6 +337,25 @@ describe('library documents', () => {
 
     expect(result).toEqual({ ok: false, reason: 'quota' });
     expect((await getDocuments()).map((d) => d.id)).toEqual(['a']);
+  });
+});
+
+describe('touchDocument', () => {
+  it('sends the opened document to the top of the library', async () => {
+    await saveDocument({ ...toLibraryDocument([block('a', 'a')]), savedAt: 1 });
+    await saveDocument({ ...toLibraryDocument([block('b', 'b')]), savedAt: 2 });
+
+    await touchDocument('a');
+
+    expect((await getDocuments()).map((doc) => doc.id)).toEqual(['a', 'b']);
+  });
+
+  it('changes nothing for an id that is not stored', async () => {
+    await saveDocument({ ...toLibraryDocument([block('a', 'a')]), savedAt: 1 });
+
+    await touchDocument('gone');
+
+    expect((await getDocuments())[0]?.savedAt).toBe(1);
   });
 });
 

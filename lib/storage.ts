@@ -47,6 +47,11 @@ export function getBlocks(): Promise<Block[]> {
 /**
  * Single write point for the buffer, so every caller gets the same quota
  * handling instead of each one guarding its own setBlocks.
+ *
+ * A buffer that came from the library is written back to it: the language of a
+ * document, its translation and its edits belong to the document, not to this
+ * reading of it, so reopening it never has to work them out again. A buffer
+ * that was never saved (a captured page) is not filed on its own.
  */
 export async function setBlocks(blocks: Block[]): Promise<SetResult> {
   try {
@@ -55,6 +60,13 @@ export async function setBlocks(blocks: Block[]): Promise<SetResult> {
     // Quota error: nothing was written, so the previous buffer still stands.
     return { ok: false, reason: 'quota' };
   }
+
+  const id = blocks[0]?.id;
+  const docs = await documentsItem.getValue();
+  const stored = id ? docs.find((doc) => doc.id === id) : undefined;
+  // savedAt is kept: following the buffer is not the user saving the document,
+  // and it must not jump to the top of the library on every edit.
+  if (stored) await saveDocument({ ...stored, name: blocks[0]!.sourceTitle, blocks, savedAt: stored.savedAt });
   return { ok: true };
 }
 
@@ -100,6 +112,22 @@ export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
     return { ok: false, reason: 'quota' };
   }
   return { ok: true };
+}
+
+/**
+ * Marks a document as just opened. savedAt is what orders the library, so the
+ * one being read goes to the top; an id that is not stored changes nothing.
+ */
+export async function touchDocument(id: string): Promise<void> {
+  const docs = await documentsItem.getValue();
+  if (!docs.some((doc) => doc.id === id)) return;
+  try {
+    await documentsItem.setValue(
+      docs.map((doc) => (doc.id === id ? { ...doc, savedAt: Date.now() } : doc)),
+    );
+  } catch {
+    // Quota: the order of the library is a nicety, never worth failing an open.
+  }
 }
 
 /** Removing an id that is not stored is not an error. */
@@ -193,10 +221,19 @@ export async function setCursor(cursor: Cursor | null): Promise<void> {
   const id = (await getBlocks())[0]?.id;
   // A cleared cursor is not progress: the stored one stays as it was.
   if (!id || !cursor) return;
-  await progressItem.setValue({ ...(await progressItem.getValue()), [id]: cursor });
+  await setProgress(id, cursor);
 }
 
 /** Where `id` was left, or null when it was never read. */
 export async function getProgress(id: string): Promise<Cursor | null> {
   return (await progressItem.getValue())[id] ?? null;
+}
+
+/**
+ * Records where a document is being read without moving the reading there:
+ * turning the page by hand is where the user is, but it must not restart the
+ * sentence in the air.
+ */
+export async function setProgress(id: string, cursor: Cursor): Promise<void> {
+  await progressItem.setValue({ ...(await progressItem.getValue()), [id]: cursor });
 }

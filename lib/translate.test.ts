@@ -25,6 +25,13 @@ function block(overrides: Partial<Block> = {}): Block {
   };
 }
 
+/** chrome.i18n.detectLanguage answering `language` with full confidence. */
+function stubDetector(language: string): void {
+  vi.stubGlobal('chrome', {
+    i18n: { detectLanguage: vi.fn(async () => ({ languages: [{ language, percentage: 100 }] })) },
+  });
+}
+
 /** Fake Translator global; `create` resolves only when the test releases it. */
 function fakeTranslator(translated = 'Olá.') {
   const listeners: Array<(event: { loaded: number }) => void> = [];
@@ -96,7 +103,7 @@ describe('translateBlock', () => {
 
   it('returns the translated text', async () => {
     fakeTranslator('Olá a todos.');
-    expect(await translateBlock(block(), 'pt', () => {})).toBe('Olá a todos.');
+    expect((await translateBlock(block(), 'pt', () => {})).text).toBe('Olá a todos.');
   });
 
   it('translates each paragraph on its own, keeping one line per paragraph', async () => {
@@ -107,7 +114,7 @@ describe('translateBlock', () => {
       'pt',
       () => {},
     );
-    expect(translated).toBe('[Titulo]\n[Primeiro.]\n[Segundo.]');
+    expect(translated.text).toBe('[Titulo]\n[Primeiro.]\n[Segundo.]');
     expect(api.translate).toHaveBeenCalledTimes(3);
   });
 
@@ -134,7 +141,7 @@ describe('translateBlock', () => {
       'pt',
       () => {},
     );
-    expect(translated).toBe('Olá guardado.');
+    expect(translated.text).toBe('Olá guardado.');
     expect(api.create).not.toHaveBeenCalled();
   });
 
@@ -154,7 +161,7 @@ describe('translateBlock', () => {
       'de',
       () => {},
     );
-    expect(translated).toBe('Hallo.');
+    expect(translated.text).toBe('Hallo.');
     expect(api.create).toHaveBeenCalledTimes(1);
   });
 
@@ -173,7 +180,7 @@ describe('translateBlock', () => {
       'pt',
       () => {},
     );
-    expect(translated).toBe('Olá novo.');
+    expect(translated.text).toBe('Olá novo.');
     expect(api.create).toHaveBeenCalledTimes(1);
   });
 
@@ -188,6 +195,40 @@ describe('translateBlock', () => {
     await expect(translateBlock(target, 'pt', () => {})).rejects.toThrow('download recusado');
     expect(target.text).toBe('Hello there.');
     expect(target.translation).toBeUndefined();
+  });
+
+  it('retries with the language read off the text when the pair is refused', async () => {
+    const translate = vi.fn(async () => 'Olá.');
+    const create = vi.fn(async ({ sourceLanguage }: { sourceLanguage: string }) => {
+      if (sourceLanguage !== 'de') throw new Error('Unable to create translator');
+      return { translate };
+    });
+    vi.stubGlobal('Translator', { create, availability: vi.fn(async () => 'available' as const) });
+    stubDetector('de');
+
+    const translated = await translateBlock(
+      block({ lang: 'en', text: 'Guten Tag, das ist ein langer Satz.' }),
+      'pt',
+      () => {},
+    );
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1]?.[0]).toMatchObject({ sourceLanguage: 'de' });
+    // The caller stores this, so the refusal does not come back on the next run.
+    expect(translated.lang).toBe('de');
+  });
+
+  it('reports the original refusal when the text reads the declared language', async () => {
+    const create = vi.fn(async () => {
+      throw new Error('Unable to create translator');
+    });
+    vi.stubGlobal('Translator', { create, availability: vi.fn(async () => 'available' as const) });
+    stubDetector('en');
+
+    await expect(
+      translateBlock(block({ lang: 'en', text: 'This is a long enough sentence.' }), 'pt', () => {}),
+    ).rejects.toThrow('Unable to create translator');
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('rejects and leaves the block untouched when translate fails', async () => {
@@ -342,7 +383,7 @@ describe('preparePair', () => {
   it('creates the pair synchronously and forwards the download progress', async () => {
     const api = fakeTranslator();
     const progress: number[] = [];
-    const preparing = preparePair('en', 'pt-BR', (loaded) => progress.push(loaded));
+    const preparing = preparePair('en', 'pt-BR', 'Hello there.', (loaded: number) => progress.push(loaded));
     expect(api.create).toHaveBeenCalledTimes(1);
     await preparing;
     expect(api.create.mock.calls[0]?.[0]).toMatchObject({ sourceLanguage: 'en', targetLanguage: 'pt-BR' });

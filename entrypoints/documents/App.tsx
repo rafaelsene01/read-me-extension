@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -37,7 +37,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { readingTime, toLibraryDocument } from '../../lib/document';
 import { applyLang } from '../../lib/edit';
 import { announceReaderPage, sendCommand } from '../../lib/messages';
-import { clearBlocks, saveDocument, setBlocks } from '../../lib/storage';
+import { clearBlocks, saveDocument, setBlocks, setProgress } from '../../lib/storage';
 import { cn } from '@/lib/utils';
 
 /** Font sizes of the text, smallest to largest; index 1 is the side panel's size. */
@@ -50,8 +50,10 @@ export default function App() {
   const { state, blocks, prefs } = useReader();
   const [tab, setTab] = useState<'file' | 'library' | 'audio'>('file');
   const [zoom, setZoom] = useState(2);
-  // Collapsed transport bar: play/pause, speed and the estimate, nothing else.
-  const [minimized, setMinimized] = useState(false);
+  // Collapsed by default: the transport line is always there, and what sits
+  // under it (the model status, the alerts, the translation panel) is opened
+  // when it is wanted.
+  const [minimized, setMinimized] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   // A document being typed in: the header carries no paging and no zoom.
   const [composing, setComposing] = useState(false);
@@ -69,18 +71,49 @@ export default function App() {
 
   // A new document starts at its first page. Declared before the cursor effect
   // so, when both fire together, the cursor's page wins.
-  useEffect(() => setPage(0), [blocks[0]?.id]);
+  useEffect(() => {
+    setPage(0);
+    followed.current = null;
+  }, [blocks[0]?.id]);
 
   // Another document replaced the buffer: there is nothing being typed any more.
   useEffect(() => {
     if (blocks.length === 0 || blocks[0]!.kinds) setComposing(false);
   }, [blocks[0]?.id]);
 
-  // The page follows the block being read.
+  /** The block the page was last moved to on its own, so it is followed once. */
+  const followed = useRef<string | null>(null);
+
+  // The page follows the block being read, once per block. `blocks` is a
+  // dependency because a restored cursor can land before the buffer does, and
+  // the page still has to follow when it arrives; the guard is what keeps that
+  // from dragging the page back every time the buffer is written.
   useEffect(() => {
-    const index = blocks.findIndex((block) => block.id === state.cursor?.blockId);
-    if (index >= 0) setPage(index);
-  }, [state.cursor?.blockId]);
+    const id = state.cursor?.blockId ?? null;
+    if (id === followed.current) return;
+    const index = blocks.findIndex((block) => block.id === id);
+    if (index < 0) return;
+    followed.current = id;
+    setPage(index);
+  }, [state.cursor?.blockId, blocks]);
+
+  /**
+   * Turning the page by hand is where the user is, so that is what reopening
+   * the document restores. The sentence is kept only when it is on this very
+   * page; the cursor itself is left alone, since moving it would restart the
+   * sentence in the air.
+   */
+  function goToPage(index: number): void {
+    setPage(index);
+    const block = blocks[index];
+    if (!block) return;
+    followed.current = state.cursor?.blockId ?? null;
+    const cursor = state.cursor;
+    void setProgress(
+      blocks[0]!.id,
+      cursor?.blockId === block.id ? cursor : { blockId: block.id, paraIndex: 0, sentIndex: 0 },
+    );
+  }
 
   const empty = blocks.length === 0;
   const paged = blocks.some((block) => block.kinds);
@@ -132,7 +165,7 @@ export default function App() {
             size="icon-sm"
             aria-label={label}
             disabled={next < 0 || next >= blocks.length}
-            onClick={() => setPage(next)}
+            onClick={() => goToPage(next)}
           >
             {step < 0 ? <ChevronLeft /> : <ChevronRight />}
           </Button>

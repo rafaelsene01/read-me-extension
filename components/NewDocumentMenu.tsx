@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MESSAGES } from "./CaptureBar";
+import LoadingOverlay from "./LoadingOverlay";
 import { useReplaceGuard } from "./useReplaceGuard";
 import { saveBook } from "../lib/book-assets";
 import { detectLang } from "../lib/detect-lang";
@@ -20,7 +21,7 @@ import {
 } from "../lib/document";
 import { parseDocx, type DocxFailure } from "../lib/docx";
 import { parseEpub, type EpubFailure } from "../lib/epub";
-import { parsePdf, type PdfFailure } from "../lib/pdf";
+import type { PdfFailure } from "../lib/pdf";
 import { saveDocument } from "../lib/storage";
 
 const FILE_MESSAGES: Record<FileFailure, string> = {
@@ -60,6 +61,8 @@ interface NewDocumentMenuProps {
 export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenuProps) {
   const input = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Reading a PDF or an EPUB takes seconds: the menu says so instead of looking stuck.
+  const [busy, setBusy] = useState(false);
   const guard = useReplaceGuard();
 
   async function openText(name: string, raw: string): Promise<void> {
@@ -93,13 +96,22 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
     event.target.value = "";
     if (!file) return;
     setMessage(null);
+    setBusy(true);
+    try {
+      await read(file);
+    } finally {
+      setBusy(false);
+    }
+  }
 
+  async function read(file: File): Promise<void> {
     const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
     if (extension === "pdf" || extension === "epub") {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const result =
         extension === "pdf"
-          ? await parsePdf(bytes, file.name, navigator.language)
+          ? // pdf.js is fetched when a PDF is picked, not when the menu is opened.
+            await (await import("../lib/pdf")).parsePdf(bytes, file.name, navigator.language)
           : parseEpub(bytes, file.name, navigator.language);
       if (!result.ok) {
         setMessage(
@@ -129,7 +141,12 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
 
   async function compose(): Promise<void> {
     setMessage(null);
-    await guard.open([emptyTextBlock(navigator.language)], onCompose);
+    setBusy(true);
+    try {
+      await guard.open([emptyTextBlock(navigator.language)], onCompose);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const error = message ?? guard.error;
@@ -139,7 +156,7 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
       <input ref={input} type="file" accept={ACCEPT} hidden onChange={(event) => void pick(event)} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button className="w-full justify-start">
+          <Button className="w-full justify-start" disabled={busy} aria-busy={busy}>
             <Plus />
             Novo
           </Button>
@@ -169,6 +186,7 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
         </Alert>
       )}
       {guard.dialog}
+      <LoadingOverlay open={busy} label="Abrindo documento…" />
     </div>
   );
 }

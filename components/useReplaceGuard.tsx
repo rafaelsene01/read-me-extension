@@ -1,94 +1,60 @@
 import { useState, type ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { MESSAGES } from './CaptureBar';
 import { toLibraryDocument } from '../lib/document';
-import { getBlocks, getProgress, saveDocument, setBlocks, setCursor } from '../lib/storage';
+import { getBlocks, saveDocument, setBlocks, touchDocument } from '../lib/storage';
 import type { Block } from '../lib/types';
 
-interface Pending {
-  blocks: Block[];
-  onOpened?: () => void;
-}
-
 /**
- * Single gate for every "open document" path: writes straight to an empty
- * buffer, otherwise asks before replacing it. Callers render `dialog` and show
- * `error` (quota) in an Alert.
+ * Single gate for every "open document" path: files what the buffer is holding
+ * in the library, then puts the new document in its place. Nothing is asked,
+ * because nothing is lost — a document that came from the library is already
+ * kept up to date by setBlocks, and a buffer that never was one is saved here
+ * before it is replaced. Callers show `error` (quota) in an Alert.
+ *
+ * `dialog` is gone; it stays in the return shape only so the callers that
+ * render it keep working.
  */
 export function useReplaceGuard(): {
   open: (blocks: Block[], onOpened?: () => void) => Promise<void>;
+  /** True while a document is being filed and put in the buffer: show it. */
+  opening: boolean;
   dialog: ReactNode;
   error: string | null;
 } {
-  const [pending, setPending] = useState<Pending | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  async function replace(blocks: Block[], onOpened?: () => void): Promise<void> {
-    const result = await setBlocks(blocks);
-    if (!result.ok) {
-      setError(MESSAGES.quota);
-      return;
-    }
-    // Pick the reading back up where this document was left; a document never
-    // read, or one edited since, starts over.
-    const saved = await getProgress(blocks[0]!.id);
-    await setCursor(saved && blocks.some((block) => block.id === saved.blockId) ? saved : null);
-    onOpened?.();
-  }
+  const [opening, setOpening] = useState(false);
 
   async function open(blocks: Block[], onOpened?: () => void): Promise<void> {
     setError(null);
-    // Read here, not from props, so the check always sees the stored buffer.
-    const current = await getBlocks();
-    if (current.length === 0) {
-      await replace(blocks, onOpened);
-      return;
+    setOpening(true);
+    try {
+      // Read here, not from props, so it always sees the stored buffer.
+      const current = await getBlocks();
+      if (current.length > 0 && current[0]!.id !== blocks[0]!.id) {
+        if (!(await saveDocument(toLibraryDocument(current))).ok) {
+          // The buffer could not be filed: keep it instead of dropping it.
+          setError(MESSAGES.quota);
+          return;
+        }
+      }
+
+      if (!(await setBlocks(blocks)).ok) {
+        setError(MESSAGES.quota);
+        return;
+      }
+
+      // Opening is what the library orders by: the document being read is the
+      // most recent one.
+      await touchDocument(blocks[0]!.id);
+
+      // The cursor is not set here: the engine sees the new buffer and puts the
+      // reading back where this document was left, which is also what gets
+      // broadcast to the panel.
+      onOpened?.();
+    } finally {
+      setOpening(false);
     }
-    setPending({ blocks, onOpened });
   }
 
-  async function confirm(save: boolean): Promise<void> {
-    if (!pending) return;
-    setPending(null);
-    // The buffer may have been cleared while the dialog was open: nothing to save.
-    const current = save ? await getBlocks() : [];
-    if (current.length > 0 && !(await saveDocument(toLibraryDocument(current))).ok) {
-      // Save failed: keep the buffer as it is.
-      setError(MESSAGES.quota);
-      return;
-    }
-    await replace(pending.blocks, pending.onOpened);
-  }
-
-  const dialog = (
-    <Dialog open={pending !== null} onOpenChange={(isOpen) => !isOpen && setPending(null)}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Substituir o conteúdo atual?</DialogTitle>
-          <DialogDescription>
-            O leitor já tem conteúdo. Ele será substituído pelo documento.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setPending(null)}>
-            Cancelar
-          </Button>
-          <Button variant="secondary" onClick={() => void confirm(false)}>
-            Substituir
-          </Button>
-          <Button onClick={() => void confirm(true)}>Salvar e substituir</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-
-  return { open, dialog, error };
+  return { open, opening, dialog: null, error };
 }

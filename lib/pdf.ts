@@ -1,7 +1,7 @@
 import { getDocument, GlobalWorkerOptions, Util, type PDFDocumentProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { LibraryDocument } from './document';
-import { groupParagraphs, type PdfBox, type TextPiece } from './pdf-text';
+import { groupParagraphs, type PdfParagraph, type TextPiece } from './pdf-text';
 import { segmentBlock } from './segment';
 import type { Block, ParagraphKind } from './types';
 
@@ -131,17 +131,16 @@ export async function parsePdf(
   }
 }
 
-/** Page size at scale 1 and the box of every paragraph of the block, in the same units. */
+/** Page size at scale 1 and every paragraph of the block, in the same units. */
 export async function pdfPageLayout(
   book: string,
   bytes: Uint8Array,
   pageNumber: number,
-): Promise<{ width: number; height: number; boxes: PdfBox[] }> {
+): Promise<{ width: number; height: number; paragraphs: PdfParagraph[] }> {
   const pdf = await open(book, bytes);
   const page = await pdf.getPage(pageNumber);
   const { width, height } = page.getViewport({ scale: 1 });
-  const boxes = groupParagraphs(await piecesOf(pdf, pageNumber)).map((paragraph) => paragraph.box);
-  return { width, height, boxes };
+  return { width, height, paragraphs: groupParagraphs(await piecesOf(pdf, pageNumber)) };
 }
 
 /** The render in flight per canvas: starting a second one on the same canvas throws. */

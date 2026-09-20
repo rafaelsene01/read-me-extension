@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleAlert, Languages } from 'lucide-react';
+import { CircleAlert, Languages, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -13,6 +13,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
+import { applyLang } from '../lib/edit';
 import { segmentBlock } from '../lib/segment';
 import { setBlocks, setPrefs } from '../lib/storage';
 import {
@@ -43,6 +44,8 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
   const [pairState, setPairState] = useState<Availability>('available');
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Warnings the user closed; a new attempt brings them back if they still hold. */
+  const [dismissed, setDismissed] = useState<string[]>([]);
 
   const supported = translationSupport() === 'ok';
   // Book chapters (blocks with kinds) are translated on the fly while spoken, never stored.
@@ -63,36 +66,54 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
     setError(cause instanceof Error ? cause.message : 'Falha na tradução');
   }
 
+  function start(): void {
+    setError(null);
+    setDismissed([]);
+    setProgress(0);
+  }
+
+  /**
+   * The language the text actually reads as, when the declared one was refused:
+   * storing it re-segments the blocks and fixes the voice, the availability
+   * check and the next translation.
+   */
+  function saveLang(lang: string): void {
+    if (lang === sourceLang) return;
+    void setBlocks(blocks.map((block) => (block.lang === sourceLang ? applyLang(block, lang) : block)));
+  }
+
   /** Called straight from the click handler so the user activation authorizes the download. */
   function prepare(target: string): void {
-    setError(null);
-    setProgress(0);
-    void preparePair(sourceLang, target, setProgress)
+    start();
+    void preparePair(sourceLang, target, (blocks[0]?.text ?? ''), setProgress)
+      .then(saveLang)
       .catch(fail)
       .finally(() => setProgress(null));
   }
 
   function translate(): void {
-    setError(null);
-    setProgress(0);
+    start();
     const target = prefs.targetLang;
     // Every create fires in this same task, with nothing awaited first, so the
     // click still authorizes the language-pack download.
     const jobs = translatable.map((block) => translateBlock(block, target, setProgress));
 
     void Promise.all(jobs)
-      .then(async (texts) => {
-        const byId = new Map(translatable.map((block, index) => [block.id, texts[index]]));
+      .then(async (results) => {
+        const byId = new Map(translatable.map((block, index) => [block.id, results[index]!]));
         const result = await setBlocks(
           blocks.map((block) => {
-            const text = byId.get(block.id);
-            if (text === undefined) return block;
+            const done = byId.get(block.id);
+            if (done === undefined) return block;
+            // The translator may have read a different source language off the
+            // text; keeping it is what stops the refusal from coming back.
+            const rebased = applyLang(block, done.lang);
             return {
-              ...block,
+              ...rebased,
               translation: {
                 target,
-                text,
-                paragraphs: segmentBlock(text, target, `${block.id}#t`),
+                text: done.text,
+                paragraphs: segmentBlock(done.text, target, `${block.id}#t`),
                 sourceTextHash: hashText(block.text),
               },
             };
@@ -108,7 +129,12 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
     !supported && 'Tradução não suportada neste navegador',
     unavailablePair && 'Par de idiomas não disponível',
     error,
-  ].filter((text): text is string => Boolean(text));
+  ].filter((text): text is string => Boolean(text) && !dismissed.includes(text as string));
+
+  function dismiss(text: string): void {
+    if (text === error) setError(null);
+    else setDismissed((closed) => [...closed, text]);
+  }
 
   return (
     <section className="flex flex-col gap-2">
@@ -159,9 +185,18 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
       {progress !== null && <Progress value={progress * 100} />}
 
       {alerts.map((text) => (
-        <Alert key={text} variant="destructive">
+        <Alert key={text} variant="destructive" className="pr-10">
           <CircleAlert />
           <AlertDescription>{text}</AlertDescription>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Fechar aviso"
+            className="absolute top-2 right-2"
+            onClick={() => dismiss(text)}
+          >
+            <X />
+          </Button>
         </Alert>
       ))}
     </section>

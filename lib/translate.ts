@@ -1,3 +1,4 @@
+import { detectLang } from './detect-lang';
 import type { Block } from './types';
 import { ensureOffscreen } from './tts/offscreen';
 
@@ -60,6 +61,43 @@ export async function availability(source: string, target: string): Promise<Avai
   return translator.availability({ sourceLanguage: source, targetLanguage: target });
 }
 
+/** A created translator, plus the source language it ended up being created for. */
+interface Created {
+  instance: TranslatorInstance;
+  source: string;
+}
+
+/**
+ * Create a translator for `source`, and when the browser refuses the pair
+ * ("Unable to create translator for the given source and target language"),
+ * read the language off the text and try that one instead: an imported file
+ * often declares the wrong language, and the refusal is where it first shows.
+ * The original failure is what surfaces when the text reads the same language,
+ * so the caller still reports a pair that genuinely does not exist.
+ *
+ * The first create is not behind any await, so the click that asked for the
+ * translation still authorizes a language-pack download; the detection takes
+ * milliseconds, which leaves the retry inside the same activation window.
+ */
+function createFor(
+  translator: TranslatorFactory,
+  source: string,
+  target: string,
+  text: string,
+  monitor?: (monitor: CreateMonitor) => void,
+): Promise<Created> {
+  const create = (from: string): Promise<TranslatorInstance> =>
+    translator.create({ sourceLanguage: from, targetLanguage: target, monitor });
+
+  return create(source)
+    .then((instance) => ({ instance, source }))
+    .catch(async (error: unknown) => {
+      const detected = await detectLang(text, source);
+      if (detected === source) throw error;
+      return { instance: await create(detected), source: detected };
+    });
+}
+
 /** True once the block text changed after its translation was stored. */
 export function isStale(block: Block): boolean {
   if (!block.translation) return false;
@@ -82,7 +120,7 @@ export function translateBlock(
   block: Block,
   target: string,
   onProgress: (loaded: number) => void,
-): Promise<string> {
+): Promise<{ text: string; lang: string }> {
   const cached = block.translation;
   if (
     cached &&
@@ -91,29 +129,23 @@ export function translateBlock(
     // Translations stored before per-paragraph translation may have merged lines.
     cached.paragraphs.length === block.paragraphs.length
   ) {
-    return Promise.resolve(cached.text);
+    return Promise.resolve({ text: cached.text, lang: block.lang });
   }
 
   const translator = factory();
   if (!translator) return Promise.reject(new Error('Tradução não suportada neste navegador'));
 
-  return translator
-    .create({
-      sourceLanguage: block.lang,
-      targetLanguage: target,
-      monitor(monitor) {
-        monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
-      },
-    })
-    .then((instance) =>
-      Promise.all(
-        block.text.split('\n').map((line) =>
-          // A line break inside a translated line would shift every paragraph after it.
-          line.trim() ? instance.translate(line).then((text) => text.replace(/\s*\n\s*/g, ' ')) : line,
-        ),
+  return createFor(translator, block.lang, target, block.text, (monitor) => {
+    monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
+  }).then(({ instance, source }) =>
+    Promise.all(
+      block.text.split('\n').map((line) =>
+        // A line break inside a translated line would shift every paragraph after it.
+        line.trim() ? instance.translate(line).then((text) => text.replace(/\s*\n\s*/g, ' ')) : line,
       ),
-    )
-    .then((lines) => lines.join('\n'));
+      // `source` is the language the text actually reads as: the caller stores it.
+    ).then((lines) => ({ text: lines.join('\n'), lang: source })),
+  );
 }
 
 /** Message tag for translation requests answered by the offscreen document. */
@@ -168,7 +200,7 @@ export function serveTranslations(): void {
       remember(translators, pair, () => {
         const translator = factory();
         if (!translator) return Promise.reject(new Error('Tradução não suportada neste navegador'));
-        return translator.create({ sourceLanguage: source, targetLanguage: target });
+        return createFor(translator, source, target, text).then(({ instance }) => instance);
       }).then((instance) => instance.translate(text)),
     );
   }
@@ -189,23 +221,19 @@ export function serveTranslations(): void {
 
 /**
  * Page side: downloads the language pack of a pair, reporting progress, and
- * discards the instance. Not async for the same reason as translateBlock:
- * `create` must run in the click's task.
+ * discards the instance. Resolves with the source language it worked with,
+ * which `text` can correct when the declared one is refused. Not async for the
+ * same reason as translateBlock: `create` must run in the click's task.
  */
 export function preparePair(
   source: string,
   target: string,
+  text: string,
   onProgress: (loaded: number) => void,
-): Promise<void> {
+): Promise<string> {
   const translator = factory();
   if (!translator) return Promise.reject(new Error('Tradução não suportada neste navegador'));
-  return translator
-    .create({
-      sourceLanguage: source,
-      targetLanguage: target,
-      monitor(monitor) {
-        monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
-      },
-    })
-    .then(() => undefined);
+  return createFor(translator, source, target, text, (monitor) => {
+    monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
+  }).then((created) => created.source);
 }

@@ -34,6 +34,7 @@ function harness(blocks: Block[] = sampleBlocks(), translate?: EngineDeps['trans
   const store = {
     blocks,
     cursor: null as Cursor | null,
+    progress: {} as Record<string, Cursor>,
     prefs: {
       rate: 1.0,
       targetLang: 'pt-BR',
@@ -59,6 +60,7 @@ function harness(blocks: Block[] = sampleBlocks(), translate?: EngineDeps['trans
     setCursor: async (cursor) => {
       store.cursor = cursor;
     },
+    getProgress: async (id: string) => store.progress[id] ?? null,
     getPrefs: async () => store.prefs,
     setPrefs: async (patch) => {
       store.prefs = { ...store.prefs, ...patch };
@@ -331,6 +333,27 @@ describe('preferences', () => {
     expect(h.store.prefs.voiceByEngine.system).toEqual({ 'pt-BR': 'Luciana' });
   });
 
+  it('switches to the engine of the chosen voice and stores it there', async () => {
+    await h.engine.setVoice('pt-BR', 'pm_alex', 'kokoro');
+
+    expect(h.store.prefs.ttsEngine).toBe('kokoro');
+    expect(h.store.prefs.voiceByEngine.kokoro).toEqual({ pt: 'pm_alex' });
+    expect(h.store.prefs.voiceByLang).toEqual({});
+  });
+
+  it('stops playback when the chosen voice belongs to another engine', async () => {
+    await h.engine.play();
+    await h.engine.onTtsEvent({ type: 'end' });
+
+    await h.engine.setVoice('pt-BR', 'M2', 'supertonic');
+    await h.engine.onTtsEvent({ type: 'interrupted' });
+
+    expect(h.stop).toHaveBeenCalled();
+    expect(h.store.prefs.ttsEngine).toBe('supertonic');
+    expect(h.store.cursor).toEqual(cursorOf('a', 0, 1));
+    expect((await h.engine.getState()).playing).toBe(false);
+  });
+
   it('stores a neural voice under the selected engine, leaving system voices alone', async () => {
     await h.engine.setTtsEngine('kokoro');
     await h.engine.setVoice('pt-BR', 'pm_alex');
@@ -382,6 +405,41 @@ describe('buffer changes', () => {
     expect(h.store.cursor).toEqual(cursorOf('a', 0, 0));
     expect((await h.engine.getState()).playing).toBe(false);
     expect(h.speakCalls).toHaveLength(spoken);
+  });
+
+  it('restores where a reopened document was left', async () => {
+    // The buffer holds another document, read to its second page.
+    await h.engine.blocksChanged();
+    h.store.progress['c'] = cursorOf('d', 0, 0);
+    h.store.cursor = cursorOf('a', 0, 1);
+
+    h.store.blocks = [block('c', [['c0.']]), block('d', [['d0.']])];
+    await h.engine.blocksChanged();
+
+    expect(h.store.cursor).toEqual(cursorOf('d', 0, 0));
+    // The panel only learns the position from a broadcast.
+    expect((await h.engine.getState()).cursor).toEqual(cursorOf('d', 0, 0));
+  });
+
+  it('starts a reopened document over when it was never read', async () => {
+    await h.engine.blocksChanged();
+    h.store.cursor = cursorOf('a', 0, 1);
+
+    h.store.blocks = [block('c', [['c0.']])];
+    await h.engine.blocksChanged();
+
+    expect(h.store.cursor).toEqual(cursorOf('c', 0, 0));
+  });
+
+  it('starts over when the stored position points at a block the document lost', async () => {
+    await h.engine.blocksChanged();
+    h.store.progress['c'] = cursorOf('gone', 0, 0);
+    h.store.cursor = cursorOf('a', 0, 1);
+
+    h.store.blocks = [block('c', [['c0.']])];
+    await h.engine.blocksChanged();
+
+    expect(h.store.cursor).toEqual(cursorOf('c', 0, 0));
   });
 
   it('leaves a still valid cursor alone when another block is removed', async () => {
