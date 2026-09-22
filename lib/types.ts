@@ -74,6 +74,8 @@ export interface Prefs {
    * for a fortnight is dropped from the cache; see staleModels.
    */
   modelUsedAt: Partial<Record<LocalEngineId, number>>;
+  /** How the library shows the documents: rows or cards. */
+  libraryView: 'list' | 'grid';
 }
 
 export interface PlaybackState {

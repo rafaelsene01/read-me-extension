@@ -39,7 +39,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { readingTime, toLibraryDocument } from '../../lib/document';
 import { applyLang } from '../../lib/edit';
 import { announceReaderPage, sendCommand } from '../../lib/messages';
-import { clearBlocks, saveDocument, setBlocks, setProgress } from '../../lib/storage';
+import {
+  clearBlocks,
+  getZoom,
+  saveDocument,
+  setBlocks,
+  setProgress,
+  setZoom as storeZoom,
+} from '../../lib/storage';
 import { cn } from '@/lib/utils';
 import { t, tr, trName } from '../../lib/i18n';
 
@@ -49,13 +56,16 @@ const ZOOM = ['text-sm', 'text-[15px]', 'text-base', 'text-lg', 'text-xl', 'text
 /** The same steps for a PDF page, whose font size cannot change: a scale factor. */
 const SCALE = [0.6, 0.8, 1, 1.25, 1.5, 2, 2.5];
 
+/** Zoom of a document that was never zoomed. */
+const DEFAULT_ZOOM = 2;
+
 export default function App() {
   const { state, blocks, prefs } = useReader();
   // The side panel's gear opens this page on #settings.
   const [tab, setTab] = useState<'file' | 'library' | 'audio' | 'settings'>(
     location.hash === '#settings' ? 'settings' : 'file',
   );
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   // Collapsed by default: the transport line is always there, and what sits
   // under it (the model status, the alerts, the translation panel) is opened
   // when it is wanted.
@@ -80,6 +90,12 @@ export default function App() {
   useEffect(() => {
     setPage(0);
     followed.current = null;
+  }, [blocks[0]?.id]);
+
+  // Each document opens at the zoom it was last read at.
+  useEffect(() => {
+    const id = blocks[0]?.id;
+    if (id) void getZoom(id).then((stored) => setZoom(stored ?? DEFAULT_ZOOM));
   }, [blocks[0]?.id]);
 
   // Another document replaced the buffer: there is nothing being typed any more.
@@ -151,7 +167,10 @@ export default function App() {
             size="icon-sm"
             aria-label={label}
             disabled={next < 0 || next >= ZOOM.length}
-            onClick={() => setZoom(next)}
+            onClick={() => {
+              setZoom(next);
+              if (blocks[0]) void storeZoom(blocks[0].id, next);
+            }}
           >
             {step < 0 ? <ZoomOut /> : <ZoomIn />}
           </Button>

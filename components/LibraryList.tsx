@@ -54,7 +54,9 @@ import {
   deleteFolder,
   getDocuments,
   getFolders,
+  getPrefs,
   moveDocument,
+  setPrefs,
 } from '../lib/storage';
 
 interface LibraryListProps {
@@ -82,6 +84,11 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
   /** The library is read from storage: until it answers, it is not "empty". */
   const [loading, setLoading] = useState(true);
   const guard = useReplaceGuard();
+
+  // The last view picked is the one the library opens in.
+  useEffect(() => {
+    void getPrefs().then((prefs) => setView(prefs.libraryView));
+  }, []);
 
   useEffect(() => {
     const load = (): void => {
@@ -273,7 +280,11 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           type="single"
           variant="outline"
           value={view}
-          onValueChange={(next) => next && setView(next as 'list' | 'grid')}
+          onValueChange={(next) => {
+            if (!next) return;
+            setView(next as 'list' | 'grid');
+            void setPrefs({ libraryView: next as 'list' | 'grid' });
+          }}
         >
           <ToggleGroupItem value="list" aria-label={t('Ver em lista')}>
             <List />

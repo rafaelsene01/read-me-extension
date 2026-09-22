@@ -1,4 +1,5 @@
 import { captureTab, isCapturable } from '../lib/capture';
+import { firstCursor } from '../lib/cursor';
 import { createEngine, type Engine } from '../lib/engine';
 import { setLocale, t } from '../lib/i18n';
 import { broadcastState, isReaderPage, onCommand } from '../lib/messages';
@@ -10,7 +11,7 @@ import { isLocalTtsEvent } from '../lib/tts/protocol';
 import { createTtsRouter, pickLocalVoice } from '../lib/tts/registry';
 import { createSystemTts } from '../lib/tts/system';
 import type { TtsEngineId } from '../lib/tts/types';
-import type { Prefs } from '../lib/types';
+import type { PlaybackState, Prefs } from '../lib/types';
 
 /** Commands that mean the selected voice is being used right now. */
 const USES_VOICE = new Set(['play', 'setVoice', 'setTtsEngine', 'downloadTtsModel']);
@@ -64,9 +65,36 @@ export default defineBackground(() => {
 
   let engine: Engine;
 
+  /**
+   * The buffer the one engine reads: the page's or the panel's. Playing on the
+   * other one pauses this reading and moves the engine over; its cursor stays
+   * where it was.
+   */
+  let scope: store.Scope = 'panel';
+  const broadcast = (state: PlaybackState) => broadcastState(state, scope);
+
+  function scopeOf(sender: chrome.runtime.MessageSender): store.Scope {
+    return sender.url && new URL(sender.url).pathname === '/documents.html' ? 'page' : 'panel';
+  }
+
+  async function use(target: store.Scope): Promise<void> {
+    if (target === scope) return;
+    if ((await engine.getState()).playing) await engine.pause();
+    scope = target;
+    // Drops the other buffer the engine kept and settles this one's cursor.
+    await engine.blocksChanged();
+  }
+
+  /** What a UI of `target` shows: the engine's state, or its own reading at rest. */
+  async function stateOf(target: store.Scope): Promise<PlaybackState> {
+    const state = await engine.getState();
+    if (target === scope) return state;
+    return { playing: false, cursor: await store.getCursor(target), error: null, tts: state.tts };
+  }
+
   const localClient = createLocalTtsClient({
     onEvent: (event) => void engine.onTtsEvent(event),
-    onStatus: () => void engine.getState().then(broadcastState),
+    onStatus: () => void engine.getState().then(broadcast),
     getSelectedEngine: async () => (await store.getPrefs()).ttsEngine,
     getVoice: async (ttsEngine, lang) => {
       const prefs = await store.getPrefs();
@@ -82,8 +110,13 @@ export default defineBackground(() => {
       local: localClient,
       getPrefs: store.getPrefs,
     }),
-    storage: store,
-    broadcast: broadcastState,
+    storage: {
+      ...store,
+      getBlocks: () => store.getBlocks(scope),
+      getCursor: () => store.getCursor(scope),
+      setCursor: (cursor, docId) => store.setCursor(cursor, docId, scope),
+    },
+    broadcast,
     getTtsStatus: () =>
       selectedEngine === 'system' ? undefined : localClient.getStatus(selectedEngine),
     translate: requestTranslation,
@@ -97,18 +130,26 @@ export default defineBackground(() => {
     return false;
   });
 
-  onCommand(async (command) => {
+  onCommand(async (command, sender) => {
+    const from = scopeOf(sender);
     switch (command.type) {
       case 'play':
+        await use(from);
         await engine.play();
         break;
       case 'pause':
-        await engine.pause();
+        // The other reading is not playing: there is nothing of it to pause.
+        if (from === scope) await engine.pause();
         break;
       case 'stop':
-        await engine.stop();
+        if (from === scope) await engine.stop();
+        else {
+          await store.setCursor(firstCursor(await store.getBlocks(from)), undefined, from);
+          await broadcastState(await stateOf(from), from);
+        }
         break;
       case 'seek':
+        await use(from);
         await engine.seek(command.cursor);
         break;
       case 'setRate':
@@ -139,7 +180,7 @@ export default defineBackground(() => {
       const { ttsEngine } = await store.getPrefs();
       if (ttsEngine !== 'system') await store.touchModel(ttsEngine);
     }
-    return engine.getState();
+    return stateOf(from);
   });
 
   /**
@@ -157,7 +198,7 @@ export default defineBackground(() => {
 
   // A removed or edited block can leave the cursor dangling.
   chrome.storage.local.onChanged.addListener((changes) => {
-    if (changes.blocks) void engine.blocksChanged();
+    if (changes[store.blocksKey(scope)]) void engine.blocksChanged();
 
     // The menu title is the only text of the background shown as it is.
     const uiLang = (changes.prefs?.newValue as Partial<Prefs> | undefined)?.uiLang;
@@ -175,6 +216,6 @@ export default defineBackground(() => {
     // Back on the system voice: free the neural model's RAM/VRAM.
     if (next === 'system') localClient.dispose();
     // setPrefs already published a state; that one carried the old engine.
-    void engine.getState().then(broadcastState);
+    void engine.getState().then(broadcast);
   });
 });

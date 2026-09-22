@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { sendCommand, type StateMessage } from '../lib/messages';
-import { getBlocks, getPrefs } from '../lib/storage';
+import { blocksKey, getBlocks, getPrefs, SCOPE } from '../lib/storage';
 import type { Block, PlaybackState, Prefs } from '../lib/types';
 
 const IDLE: PlaybackState = { playing: false, cursor: null, error: null };
@@ -23,7 +23,11 @@ export function useReader(): { state: PlaybackState; blocks: Block[]; prefs: Pre
     });
 
     const onMessage = (message: unknown): void => {
-      if (isStateMessage(message)) setState(message.state);
+      if (!isStateMessage(message)) return;
+      // The engine reading the other scope's buffer: only its model status
+      // (a download in progress) is this UI's business too.
+      if (message.scope === SCOPE) setState(message.state);
+      else setState((current) => ({ ...current, tts: message.state.tts }));
     };
     chrome.runtime.onMessage.addListener(onMessage);
     return () => chrome.runtime.onMessage.removeListener(onMessage);
@@ -40,7 +44,7 @@ export function useReader(): { state: PlaybackState; blocks: Block[]; prefs: Pre
     // reloading the whole buffer (a book, sometimes) on each of those writes
     // froze the panel while it read.
     const onChanged = (changes: Record<string, unknown>): void => {
-      if (changes.blocks || changes.prefs) load();
+      if (changes[blocksKey()] || changes.prefs) load();
     };
     chrome.storage.local.onChanged.addListener(onChanged);
     return () => chrome.storage.local.onChanged.removeListener(onChanged);

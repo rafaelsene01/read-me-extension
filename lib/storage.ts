@@ -17,14 +17,38 @@ export const MAX_RATE = 2;
 export type SetResult = { ok: true } | { ok: false; reason: 'quota' };
 export type AppendResult = SetResult | { ok: false; reason: 'full' };
 
-const blocksItem = storage.defineItem<Block[]>('local:blocks', { fallback: [] });
-const cursorItem = storage.defineItem<Cursor | null>('local:cursor', { fallback: null });
+/**
+ * Which reading a buffer belongs to. The extension's page and the side panel
+ * each keep their own buffer and cursor: what is opened on the page never shows
+ * up in the panel, and what is captured from a site never replaces the page's.
+ */
+export type Scope = 'page' | 'panel';
+
+/** The scope of this context: the extension's page, or everything else (panel, background). */
+export const SCOPE: Scope = globalThis.location?.pathname === '/documents.html' ? 'page' : 'panel';
+
+/** The storage key of a scope's buffer, as chrome.storage.onChanged names it. */
+export function blocksKey(scope: Scope = SCOPE): string {
+  return scope === 'page' ? 'blocks' : 'panelBlocks';
+}
+
+// The page keeps the original keys, so what it was reading survives the split.
+const blocksItems = {
+  page: storage.defineItem<Block[]>('local:blocks', { fallback: [] }),
+  panel: storage.defineItem<Block[]>('local:panelBlocks', { fallback: [] }),
+};
+const cursorItems = {
+  page: storage.defineItem<Cursor | null>('local:cursor', { fallback: null }),
+  panel: storage.defineItem<Cursor | null>('local:panelCursor', { fallback: null }),
+};
 const prefsItem = storage.defineItem<Partial<Prefs>>('local:prefs', { fallback: {} });
 const documentsItem = storage.defineItem<LibraryDocument[]>('local:documents', { fallback: [] });
 /** Folder names of the library; a folder exists even while it holds nothing. */
 const foldersItem = storage.defineItem<string[]>('local:folders', { fallback: [] });
 /** Where the reading of each document stopped, by document id. */
 const progressItem = storage.defineItem<Record<string, Cursor>>('local:progress', { fallback: {} });
+/** Zoom step each document was last read at, by document id. */
+const zoomItem = storage.defineItem<Record<string, number>>('local:zoom', { fallback: {} });
 
 function defaultVoiceByEngine(): Prefs['voiceByEngine'] {
   return { system: {}, kokoro: {}, supertonic: {} };
@@ -41,11 +65,12 @@ function defaultPrefs(): Prefs {
     activeTab: 'original',
     favoriteVoices: [],
     modelUsedAt: {},
+    libraryView: 'list',
   };
 }
 
-export function getBlocks(): Promise<Block[]> {
-  return blocksItem.getValue();
+export function getBlocks(scope: Scope = SCOPE): Promise<Block[]> {
+  return blocksItems[scope].getValue();
 }
 
 /**
@@ -57,9 +82,9 @@ export function getBlocks(): Promise<Block[]> {
  * reading of it, so reopening it never has to work them out again. A buffer
  * that was never saved (a captured page) is not filed on its own.
  */
-export async function setBlocks(blocks: Block[]): Promise<SetResult> {
+export async function setBlocks(blocks: Block[], scope: Scope = SCOPE): Promise<SetResult> {
   try {
-    await blocksItem.setValue(blocks);
+    await blocksItems[scope].setValue(blocks);
   } catch {
     // Quota error: nothing was written, so the previous buffer still stands.
     return { ok: false, reason: 'quota' };
@@ -138,9 +163,11 @@ export async function touchDocument(id: string): Promise<void> {
 export async function deleteDocument(id: string): Promise<SetResult> {
   const docs = await documentsItem.getValue();
   const { [id]: _gone, ...progress } = await progressItem.getValue();
+  const { [id]: _zoom, ...zoom } = await zoomItem.getValue();
   try {
     await documentsItem.setValue(docs.filter((d) => d.id !== id));
     await progressItem.setValue(progress);
+    await zoomItem.setValue(zoom);
   } catch {
     // Quota error: nothing was written, so the previous library still stands.
     return { ok: false, reason: 'quota' };
@@ -222,8 +249,8 @@ export async function touchModel(engine: LocalEngineId): Promise<void> {
   await setPrefs({ modelUsedAt: { ...prefs.modelUsedAt, [engine]: Date.now() } });
 }
 
-export function getCursor(): Promise<Cursor | null> {
-  return cursorItem.getValue();
+export function getCursor(scope: Scope = SCOPE): Promise<Cursor | null> {
+  return cursorItems[scope].getValue();
 }
 
 /**
@@ -234,12 +261,25 @@ export function getCursor(): Promise<Cursor | null> {
  * the whole buffer back only to take its first id is the most expensive thing
  * in the path between one sentence and the next.
  */
-export async function setCursor(cursor: Cursor | null, docId?: string): Promise<void> {
-  await cursorItem.setValue(cursor);
-  const id = docId ?? (await getBlocks())[0]?.id;
+export async function setCursor(
+  cursor: Cursor | null,
+  docId?: string,
+  scope: Scope = SCOPE,
+): Promise<void> {
+  await cursorItems[scope].setValue(cursor);
+  const id = docId ?? (await getBlocks(scope))[0]?.id;
   // A cleared cursor is not progress: the stored one stays as it was.
   if (!id || !cursor) return;
   await setProgress(id, cursor);
+}
+
+/** The zoom step `id` was last read at, or null when it was never changed. */
+export async function getZoom(id: string): Promise<number | null> {
+  return (await zoomItem.getValue())[id] ?? null;
+}
+
+export async function setZoom(id: string, zoom: number): Promise<void> {
+  await zoomItem.setValue({ ...(await zoomItem.getValue()), [id]: zoom });
 }
 
 /** Where `id` was left, or null when it was never read. */

@@ -49,7 +49,7 @@ describe('onCommand', () => {
 
     listeners[0]!({ type: 'setRate', rate: 1.5 }, {}, () => {});
 
-    expect(handler).toHaveBeenCalledWith({ type: 'setRate', rate: 1.5 });
+    expect(handler).toHaveBeenCalledWith({ type: 'setRate', rate: 1.5 }, {});
   });
 
   it('ignores a message of unknown shape without throwing', () => {
@@ -74,14 +74,14 @@ describe('broadcastState', () => {
   it('sends the playback state to the panel', async () => {
     const { sendMessage } = stubRuntime();
 
-    await broadcastState(state);
+    await broadcastState(state, 'panel');
 
-    expect(sendMessage).toHaveBeenCalledWith({ type: 'playbackState', state });
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'playbackState', state, scope: 'panel' });
   });
 
   it('resolves instead of rejecting when no panel is open to receive it', async () => {
     stubRuntime(vi.fn().mockRejectedValue(new Error('Could not establish connection')));
 
-    await expect(broadcastState(state)).resolves.toBeUndefined();
+    await expect(broadcastState(state, 'panel')).resolves.toBeUndefined();
   });
 });

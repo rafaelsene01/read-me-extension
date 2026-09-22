@@ -1,3 +1,4 @@
+import type { Scope } from './storage';
 import type { Cursor, PlaybackState } from './types';
 import type { LocalEngineId, TtsEngineId } from './tts/types';
 
@@ -34,6 +35,8 @@ export type Command =
 export interface StateMessage {
   type: 'playbackState';
   state: PlaybackState;
+  /** The reading this state is about; the other scope's UI ignores all but its model status. */
+  scope: Scope;
 }
 
 export function isCommand(value: unknown): value is Command {
@@ -46,14 +49,17 @@ export function sendCommand(command: Command): Promise<PlaybackState | null> {
   return chrome.runtime.sendMessage(command);
 }
 
-type CommandHandler = (command: Command) => PlaybackState | void | Promise<PlaybackState | void>;
+type CommandHandler = (
+  command: Command,
+  sender: chrome.runtime.MessageSender,
+) => PlaybackState | void | Promise<PlaybackState | void>;
 
 export function onCommand(handler: CommandHandler): void {
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Anything that is not a Command belongs to another listener; ignore it.
     if (!isCommand(message)) return false;
 
-    Promise.resolve(handler(message))
+    Promise.resolve(handler(message, sender))
       .then((result) => sendResponse(result ?? null))
       .catch(() => sendResponse(null));
     return true;
@@ -86,8 +92,8 @@ export function announceReaderPage(open: boolean): void {
 }
 
 /** Pushes state to the side panel. Resolves even when no panel is open to receive it. */
-export async function broadcastState(state: PlaybackState): Promise<void> {
-  const message: StateMessage = { type: 'playbackState', state };
+export async function broadcastState(state: PlaybackState, scope: Scope): Promise<void> {
+  const message: StateMessage = { type: 'playbackState', state, scope };
   try {
     await chrome.runtime.sendMessage(message);
   } catch {

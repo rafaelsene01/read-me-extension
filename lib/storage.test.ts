@@ -8,6 +8,7 @@ import {
   deleteFolder,
   getBlocks,
   getCursor,
+  getZoom,
   getDocuments,
   getFolders,
   getPrefs,
@@ -17,6 +18,7 @@ import {
   saveDocument,
   setBlocks,
   setCursor,
+  setZoom,
   setPrefs,
   touchDocument,
 } from './storage';
@@ -143,6 +145,37 @@ describe('setBlocks', () => {
     await setBlocks([block('a', 'primeiro')]);
 
     expect(await getDocuments()).toEqual([]);
+  });
+});
+
+describe('zoom', () => {
+  it('remembers the zoom of each document and forgets it when the document goes', async () => {
+    expect(await getZoom('a')).toBeNull();
+
+    await setZoom('a', 4);
+    await setZoom('b', 1);
+
+    expect(await getZoom('a')).toBe(4);
+    expect(await getZoom('b')).toBe(1);
+
+    await deleteDocument('a');
+
+    expect(await getZoom('a')).toBeNull();
+    expect(await getZoom('b')).toBe(1);
+  });
+});
+
+describe('scopes', () => {
+  it('keeps the page and the panel buffers and cursors apart', async () => {
+    await setBlocks([block('a', 'livro')], 'page');
+    await setCursor({ blockId: 'a', paraIndex: 0, sentIndex: 1 }, undefined, 'page');
+
+    await setBlocks([block('b', 'captura')], 'panel');
+
+    expect((await getBlocks('page')).map((b) => b.id)).toEqual(['a']);
+    expect((await getBlocks('panel')).map((b) => b.id)).toEqual(['b']);
+    expect(await getCursor('panel')).toBeNull();
+    expect(await getCursor('page')).toEqual({ blockId: 'a', paraIndex: 0, sentIndex: 1 });
   });
 });
 
