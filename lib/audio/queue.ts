@@ -14,6 +14,11 @@ export class AudioQueue<T extends { requestId: string }> {
     return this.chunks.shift();
   }
 
+  /** The chunk that plays next, still queued: what gets loaded in advance. */
+  peek(): T | undefined {
+    return this.chunks[0];
+  }
+
   has(requestId: string): boolean {
     return this.chunks.some((chunk) => chunk.requestId === requestId);
   }

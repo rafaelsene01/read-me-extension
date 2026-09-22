@@ -227,10 +227,14 @@ export function getCursor(): Promise<Cursor | null> {
 /**
  * Also records where the current document is being read, so reopening it from
  * the library resumes at the same page and block instead of at the beginning.
+ *
+ * `docId` is the buffer's document, for callers that already hold it: reading
+ * the whole buffer back only to take its first id is the most expensive thing
+ * in the path between one sentence and the next.
  */
-export async function setCursor(cursor: Cursor | null): Promise<void> {
+export async function setCursor(cursor: Cursor | null, docId?: string): Promise<void> {
   await cursorItem.setValue(cursor);
-  const id = (await getBlocks())[0]?.id;
+  const id = docId ?? (await getBlocks())[0]?.id;
   // A cleared cursor is not progress: the stored one stays as it was.
   if (!id || !cursor) return;
   await setProgress(id, cursor);

@@ -155,6 +155,18 @@ export function createLocalTtsClient(deps: LocalTtsClientDeps): LocalTtsClient {
       await started;
     },
 
+    async prefetch(utterances) {
+      const engine = await deps.getSelectedEngine();
+      if (engine === 'system' || statuses.get(engine)?.status !== 'ready') return;
+      const items = [];
+      for (const { text, options } of utterances) {
+        const voiceId = await deps.getVoice(engine, options.lang);
+        // No voice for that language: speaking it will report the error.
+        if (voiceId) items.push({ text, options: { lang: options.lang, rate: options.rate, voiceId } });
+      }
+      if (items.length > 0) send({ type: 'prefetch', items });
+    },
+
     stop() {
       const requestId = currentRequestId;
       currentRequestId = null;

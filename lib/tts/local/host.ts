@@ -1,6 +1,6 @@
 import { markModelInstalled } from '../model-cache';
 import { getEngineDefinition } from '../registry';
-import type { LocalEngineId } from '../types';
+import type { LocalEngineId, TtsSynthesisOptions } from '../types';
 import type { WorkerCommand, WorkerEvent } from '../worker-protocol';
 import { createKokoroRuntime } from './kokoro';
 import { ownedPcm } from './ort-env';
@@ -25,6 +25,8 @@ export function createTtsHost(emit: EmitWorkerEvent): (command: WorkerCommand) =
   let backend: 'webgpu' | 'wasm' | null = null;
   /** Newest synthesize received; anything else is stale and gets cancelled. */
   let latestRequestId: string | null = null;
+  /** Prefetch keys still wanted; a prefetch outlives the request that triggered it. */
+  const prefetching = new Set<string>();
 
   async function load(engine: LocalEngineId): Promise<void> {
     if (runtime?.engine === engine) return;
@@ -64,22 +66,23 @@ export function createTtsHost(emit: EmitWorkerEvent): (command: WorkerCommand) =
   }
 
   async function synthesize(
-    command: Extract<WorkerCommand, { type: 'synthesize' }>,
+    requestId: string,
+    text: string,
+    options: TtsSynthesisOptions,
+    cancelled: () => boolean,
   ): Promise<void> {
-    const { requestId } = command;
     if (!runtime) {
       emit({ type: 'error', requestId, message: 'Modelo não carregado' });
       return;
     }
-    const cancelled = () => latestRequestId !== requestId;
     if (cancelled()) return;
     const started = performance.now();
     let firstAudioMs: number | null = null;
     let audioSeconds = 0;
     try {
       await runtime.synthesize(
-        command.text,
-        command.options,
+        text,
+        options,
         (pcm, sampleRate) => {
           if (cancelled()) return;
           firstAudioMs ??= Math.round(performance.now() - started);
@@ -120,16 +123,30 @@ export function createTtsHost(emit: EmitWorkerEvent): (command: WorkerCommand) =
     if (command.type === 'stop') {
       if (command.requestId === undefined || command.requestId === latestRequestId)
         latestRequestId = null;
+      // Whatever was read ahead belongs to a position the reader just left.
+      prefetching.clear();
       return;
     }
     if (command.type === 'synthesize') latestRequestId = command.requestId;
-    if (command.type === 'unload') latestRequestId = null;
+    if (command.type === 'prefetch') prefetching.add(command.key);
+    if (command.type === 'unload') {
+      latestRequestId = null;
+      prefetching.clear();
+    }
     chain = chain.then(() => {
       switch (command.type) {
         case 'load':
           return load(command.engine);
         case 'synthesize':
-          return synthesize(command);
+          return synthesize(
+            command.requestId,
+            command.text,
+            command.options,
+            () => latestRequestId !== command.requestId,
+          );
+        case 'prefetch':
+          return synthesize(command.key, command.text, command.options, () => !prefetching.has(command.key))
+            .finally(() => prefetching.delete(command.key));
         case 'unload':
           runtime?.unload();
           runtime = null;

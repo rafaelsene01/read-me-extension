@@ -7,6 +7,13 @@ import type { Block, Cursor, PlaybackState, Prefs } from './types';
 /** chrome.tts refuses an utterance longer than this. */
 export const TTS_MAX_CHARS = 32_000;
 
+/**
+ * Sentences synthesized ahead of the one being spoken. Neural synthesis takes
+ * roughly as long as the sentence lasts, so without lookahead every sentence
+ * starts with an audible gap.
+ */
+export const LOOKAHEAD = 3;
+
 export interface SpeakOptions {
   lang: string;
   rate: number;
@@ -26,12 +33,18 @@ export interface EngineTts {
    * engine cannot (chrome.tts): the engine then restarts the sentence.
    */
   setRate?(rate: number): boolean | Promise<boolean>;
+  /**
+   * Warms the utterances that come next, so playback does not wait on
+   * synthesis between sentences. Best effort: engines that cannot omit it.
+   */
+  prefetch?(utterances: { text: string; options: SpeakOptions }[]): void | Promise<void>;
 }
 
 export interface EngineStorage {
   getBlocks(): Promise<Block[]>;
   getCursor(): Promise<Cursor | null>;
-  setCursor(cursor: Cursor | null): Promise<void>;
+  /** `docId` saves the store a full read of the buffer; see storage.setCursor. */
+  setCursor(cursor: Cursor | null, docId?: string): Promise<void>;
   /** Where a document was left, by document id; null when it was never read. */
   getProgress(id: string): Promise<Cursor | null>;
   getPrefs(): Promise<Prefs>;
@@ -99,6 +112,13 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
   /** Last buffer seen, used to find the block that followed a removed one. */
   let lastBlocks: Block[] | undefined;
   /**
+   * The buffer as it is stored. It can be a whole book, so parsing it out of
+   * the store for every sentence is heard as a pause between them; it is read
+   * once and dropped by blocksChanged, which the store's own change event
+   * triggers.
+   */
+  let buffer: Block[] | undefined;
+  /**
    * Remaining pieces of a sentence too long for the engine. The cursor only
    * advances once this is empty. Lost if the worker is killed mid-sentence, in
    * which case the next end event moves on to the following sentence.
@@ -123,9 +143,35 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
 
   /** Buffer seen through the active tab; everything downstream uses this view. */
   async function blocksView(): Promise<Block[]> {
-    const blocks = await storage.getBlocks();
+    buffer ??= await storage.getBlocks();
     const { activeTab } = await storage.getPrefs();
-    return viewOf(blocks, activeTab);
+    return viewOf(buffer, activeTab);
+  }
+
+  /**
+   * Asks the engine to synthesize the next few sentences while this one plays.
+   * Skipped on the translation tab of a book, where each sentence is
+   * translated right before it is spoken.
+   */
+  function prefetchAhead(cursor: Cursor, blocks: Block[], prefs: Prefs): void {
+    if (!tts.prefetch) return;
+    const utterances: { text: string; options: SpeakOptions }[] = [];
+    let at: Cursor | null = cursor;
+    for (let i = 0; i < LOOKAHEAD; i++) {
+      at = nextCursor(blocks, at);
+      if (!at) break;
+      const sentence = sentenceAt(blocks, at);
+      if (!sentence) break;
+      const blockId = at.blockId;
+      const lang = blocks.find((b) => b.id === blockId)?.lang ?? prefs.targetLang;
+      const [head] = chunkSentence(sentence.text, TTS_MAX_CHARS);
+      if (head === undefined) break;
+      utterances.push({
+        text: head,
+        options: { lang, rate: prefs.rate, voiceName: prefs.voiceByLang[lang] },
+      });
+    }
+    if (utterances.length > 0) void tts.prefetch(utterances);
   }
 
   async function speakAt(cursor: Cursor, blocks: Block[]): Promise<void> {
@@ -135,7 +181,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
 
     // The cursor is persisted BEFORE speaking: the service worker can be killed
     // mid-sentence and must wake up knowing which sentence is in the air.
-    await storage.setCursor(cursor);
+    await storage.setCursor(cursor, blocks[0]?.id);
 
     const prefs = await storage.getPrefs();
     const block = blocks.find((b) => b.id === cursor.blockId);
@@ -168,6 +214,9 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
 
     await publish();
     await safeSpeak(head ?? text, options);
+
+    if (gen !== generation) return;
+    if (!translating) prefetchAhead(cursor, blocks, prefs);
 
     // Warm the host cache with the next book sentence; a failure surfaces when it is spoken.
     if (translating) {
@@ -315,6 +364,7 @@ export function createEngine({ tts, storage, broadcast, getTtsStatus, translate 
     },
 
     async blocksChanged() {
+      buffer = undefined;
       const blocks = await blocksView();
       const previous = lastBlocks;
       lastBlocks = blocks;

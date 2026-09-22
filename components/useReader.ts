@@ -36,8 +36,14 @@ export function useReader(): { state: PlaybackState; blocks: Block[]; prefs: Pre
     };
     load();
     // Blocks and prefs are written by the background too, so follow the store.
-    chrome.storage.local.onChanged.addListener(load);
-    return () => chrome.storage.local.onChanged.removeListener(load);
+    // Only those two keys: reading advances the cursor once per sentence, and
+    // reloading the whole buffer (a book, sometimes) on each of those writes
+    // froze the panel while it read.
+    const onChanged = (changes: Record<string, unknown>): void => {
+      if (changes.blocks || changes.prefs) load();
+    };
+    chrome.storage.local.onChanged.addListener(onChanged);
+    return () => chrome.storage.local.onChanged.removeListener(onChanged);
   }, []);
 
   return { state, blocks, prefs };

@@ -4,6 +4,7 @@ import { AudioPlayer, encodeWav, type AudioElementLike } from './player';
 /** Audio element stand-in: finishes when told to. */
 class FakeAudio implements AudioElementLike {
   src = '';
+  preload = '';
   playbackRate = 1;
   preservesPitch = false;
   onended: ((event: Event) => void) | null = null;
@@ -55,8 +56,9 @@ describe('AudioPlayer', () => {
     instance.enqueue(chunk('r1'));
     instance.enqueue(chunk('r1'));
 
-    // The second chunk waits in the queue: its element is created when it plays.
-    expect(audios).toHaveLength(1);
+    // The second chunk waits in the queue, its element already loading.
+    expect(audios).toHaveLength(2);
+    expect(audios[1]!.playing).toBe(false);
     expect(audios[0]!.playing).toBe(true);
     expect(audios[0]!.preservesPitch).toBe(true);
     expect(onStarted).toHaveBeenCalledTimes(1);
@@ -102,7 +104,7 @@ describe('AudioPlayer', () => {
     instance.stop();
 
     expect(audios[0]!.paused).toBe(true);
-    expect(audios).toHaveLength(1);
+    expect(audios).toHaveLength(2);
     audios[0]!.finish();
     expect(onEnded).not.toHaveBeenCalled();
     expect(onStarted).toHaveBeenCalledTimes(1);
@@ -120,6 +122,44 @@ describe('AudioPlayer', () => {
     instance.markEnded('r2');
     audios[1]!.finish();
     expect(onEnded).toHaveBeenCalledWith('r2');
+  });
+
+  it('plays one request into the next, reporting the end of the first as the second starts', () => {
+    const { instance, audios, onStarted, onEnded } = player();
+
+    // What reading ahead does: the next sentence is queued while this one plays.
+    instance.enqueue(chunk('r1'));
+    instance.markEnded('r1');
+    instance.enqueue(chunk('r2'));
+    instance.markEnded('r2');
+    // r2 is loaded and waiting, and r1 has not drained yet.
+    expect(audios).toHaveLength(2);
+    expect(audios[1]!.playing).toBe(false);
+    expect(onEnded).not.toHaveBeenCalled();
+
+    audios[0]!.finish();
+    expect(onEnded).toHaveBeenCalledExactlyOnceWith('r1');
+    expect(audios[1]!.playing).toBe(true);
+    expect(onStarted).toHaveBeenNthCalledWith(2, 'r2');
+
+    audios[1]!.finish();
+    expect(onEnded).toHaveBeenLastCalledWith('r2');
+  });
+
+  it('loads the element of the next chunk before the current one ends', () => {
+    const { instance, audios } = player();
+
+    instance.enqueue(chunk('r1'));
+    instance.enqueue(chunk('r1'));
+    // Pointed at its audio and loading, but silent until its turn.
+    expect(audios[1]!.src).not.toBe('');
+    expect(audios[1]!.preload).toBe('auto');
+    expect(audios[1]!.playing).toBe(false);
+
+    audios[0]!.finish();
+    // The very element that was warmed plays: nothing is created at the swap.
+    expect(audios[1]!.playing).toBe(true);
+    expect(audios).toHaveLength(2);
   });
 
   it('changes speed live, relative to the speed each chunk was synthesized at', () => {

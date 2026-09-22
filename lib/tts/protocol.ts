@@ -12,6 +12,8 @@ type Channel = { channel: typeof LOCAL_TTS_CHANNEL };
 export type LocalTtsCommandBody =
   | { type: 'ensure-ready'; engine: LocalEngineId }
   | { type: 'speak'; requestId: string; text: string; options: TtsSynthesisOptions }
+  /** Synthesize these upcoming utterances now, so speaking them starts instantly. */
+  | { type: 'prefetch'; items: { text: string; options: TtsSynthesisOptions }[] }
   | { type: 'stop'; requestId?: string }
   | { type: 'set-rate'; rate: number }
   | { type: 'dispose' };

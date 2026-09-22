@@ -51,14 +51,22 @@ function harness(blocks: Block[] = sampleBlocks(), translate?: EngineDeps['trans
   };
 
   const speakCalls: SpeakCall[] = [];
+  const prefetchCalls: { text: string; options: SpeakOptions }[][] = [];
   const stop = vi.fn();
   const states: PlaybackState[] = [];
 
+  const reads = { blocks: 0 };
+  const cursorWrites: { cursor: Cursor | null; docId?: string }[] = [];
+
   const storage: EngineStorage = {
-    getBlocks: async () => store.blocks,
+    getBlocks: async () => {
+      reads.blocks++;
+      return store.blocks;
+    },
     getCursor: async () => store.cursor,
-    setCursor: async (cursor) => {
+    setCursor: async (cursor, docId) => {
       store.cursor = cursor;
+      cursorWrites.push({ cursor, ...(docId !== undefined ? { docId } : {}) });
     },
     getProgress: async (id: string) => store.progress[id] ?? null,
     getPrefs: async () => store.prefs,
@@ -73,6 +81,9 @@ function harness(blocks: Block[] = sampleBlocks(), translate?: EngineDeps['trans
         speakCalls.push({ text, options, cursorAtSpeak: store.cursor });
       },
       stop,
+      prefetch: (utterances) => {
+        prefetchCalls.push(utterances);
+      },
     },
     storage,
     broadcast: (state) => {
@@ -81,7 +92,7 @@ function harness(blocks: Block[] = sampleBlocks(), translate?: EngineDeps['trans
     translate,
   });
 
-  return { engine, store, storage, speakCalls, stop, states };
+  return { engine, store, storage, speakCalls, prefetchCalls, stop, states, reads, cursorWrites };
 }
 
 const cursorOf = (blockId: string, paraIndex: number, sentIndex: number): Cursor => ({
@@ -94,6 +105,31 @@ let h: ReturnType<typeof harness>;
 
 beforeEach(() => {
   h = harness();
+});
+
+describe('buffer reads', () => {
+  it('reads the buffer once, not for every sentence', async () => {
+    await h.engine.play();
+    await h.engine.onTtsEvent({ type: 'end' });
+    await h.engine.onTtsEvent({ type: 'end' });
+
+    expect(h.speakCalls).toHaveLength(3);
+    expect(h.reads.blocks).toBe(1);
+  });
+
+  it('tells the store which document the cursor belongs to, so it reads no buffer', async () => {
+    await h.engine.play();
+
+    expect(h.cursorWrites.at(-1)).toEqual({ cursor: cursorOf('a', 0, 0), docId: 'a' });
+  });
+
+  it('reads the buffer again once it changed', async () => {
+    await h.engine.play();
+    h.store.blocks = [block('a', [['a0.', 'a1.'], ['a2.']]), block('c', [['c0.']])];
+    await h.engine.blocksChanged();
+
+    expect(h.reads.blocks).toBe(2);
+  });
 });
 
 describe('play', () => {
@@ -116,6 +152,19 @@ describe('play', () => {
     await h.engine.play();
 
     expect(h.speakCalls[0]!.options.lang).toBe('en-US');
+  });
+
+  it('asks the engine to synthesize the next sentences ahead', async () => {
+    await h.engine.play();
+
+    expect(h.prefetchCalls.at(-1)?.map((item) => item.text)).toEqual(['a1.', 'a2.', 'b0.']);
+  });
+
+  it('prefetches only what is left near the end of the buffer', async () => {
+    await h.engine.seek(cursorOf('a', 1, 0));
+    await h.engine.play();
+
+    expect(h.prefetchCalls.at(-1)?.map((item) => item.text)).toEqual(['b0.']);
   });
 
   it('does nothing and reports not playing when the buffer is empty', async () => {

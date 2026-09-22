@@ -227,5 +227,11 @@ export function createTtsRouter(deps: {
       if (ttsEngine === 'system') return false;
       return (await deps.local.setRate?.(rate)) ?? false;
     },
+    async prefetch(utterances) {
+      // chrome.tts speaks instantly: only the neural engines need the head start.
+      const { ttsEngine } = await deps.getPrefs();
+      if (ttsEngine === 'system') return;
+      await deps.local.prefetch?.(utterances);
+    },
   };
 }

@@ -11,6 +11,7 @@ export interface PlayerChunk {
 /** The slice of HTMLAudioElement the player uses (injectable for tests). */
 export interface AudioElementLike {
   src: string;
+  preload: string;
   playbackRate: number;
   preservesPitch: boolean;
   onended: ((event: Event) => void) | null;
@@ -38,6 +39,13 @@ interface CurrentPlayback {
   audio: AudioElementLike;
   url: string;
   rate: number;
+}
+
+/** Element already pointed at the next chunk, loading while this one plays. */
+interface WarmAudio {
+  chunk: PlayerChunk;
+  audio: AudioElementLike;
+  url: string;
 }
 
 /** Mono 32-bit float WAV, which Chrome plays natively. */
@@ -75,6 +83,7 @@ export class AudioPlayer {
   private readonly synthesisDone = new Set<string>();
   private rate = 1;
   private context: AudioContext | null = null;
+  private warm: WarmAudio | null = null;
 
   constructor(deps: AudioPlayerDeps) {
     this.deps = deps;
@@ -83,6 +92,7 @@ export class AudioPlayer {
   enqueue(chunk: PlayerChunk): void {
     this.queue.enqueue(chunk);
     this.pump();
+    this.warmNext();
   }
 
   /** Speed chosen by the user: applied to the chunk playing now and every queued one. */
@@ -104,6 +114,7 @@ export class AudioPlayer {
       this.current = null;
     }
     this.queue.clear(requestId);
+    if (this.warm && (requestId === undefined || this.warm.chunk.requestId === requestId)) this.dropWarm();
     if (requestId === undefined) {
       this.started.clear();
       this.synthesisDone.clear();
@@ -113,6 +124,29 @@ export class AudioPlayer {
     }
     // Keep playing whatever belongs to other requests.
     this.pump();
+    this.warmNext();
+  }
+
+  /**
+   * Points an element at the chunk that plays next, so the browser fetches and
+   * decodes it while the current one is still playing: the swap is then
+   * immediate instead of loading a fresh element at the moment of silence.
+   */
+  private warmNext(): void {
+    const next = this.queue.peek();
+    if (!next || this.warm?.chunk === next) return;
+    this.dropWarm();
+    const audio = this.deps.createAudio?.() ?? new Audio();
+    audio.preload = 'auto';
+    const url = URL.createObjectURL(encodeWav(next.pcm, next.sampleRate));
+    audio.src = url;
+    this.warm = { chunk: next, audio, url };
+  }
+
+  private dropWarm(): void {
+    if (!this.warm) return;
+    URL.revokeObjectURL(this.warm.url);
+    this.warm = null;
   }
 
   private release(playback: CurrentPlayback): void {
@@ -126,11 +160,17 @@ export class AudioPlayer {
     const next = this.queue.shift();
     if (!next) return;
 
-    const audio = this.deps.createAudio?.() ?? new Audio();
+    // Loaded in advance while the previous chunk played, when it is still the
+    // one that comes next.
+    const warm = this.warm?.chunk === next ? this.warm : null;
+    if (warm) this.warm = null;
+    else this.dropWarm();
+    const audio = warm?.audio ?? this.deps.createAudio?.() ?? new Audio();
+    const url = warm?.url ?? URL.createObjectURL(encodeWav(next.pcm, next.sampleRate));
+    if (!warm) audio.src = url;
+    // Routed only now: a warm element that never plays leaves no node behind.
     this.route(audio);
-    const url = URL.createObjectURL(encodeWav(next.pcm, next.sampleRate));
     const playback: CurrentPlayback = { requestId: next.requestId, audio, url, rate: next.rate };
-    audio.src = url;
     audio.preservesPitch = true;
     audio.playbackRate = this.rate / next.rate;
     audio.onended = () => {
@@ -145,6 +185,7 @@ export class AudioPlayer {
       this.deps.onStarted(next.requestId);
     }
     audio.play().catch((err: unknown) => console.warn('[ReadMe] Falha ao tocar áudio', err));
+    this.warmNext();
   }
 
   private route(audio: AudioElementLike): void {
