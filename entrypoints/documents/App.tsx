@@ -41,7 +41,7 @@ import { applyLang } from '../../lib/edit';
 import { announceReaderPage, sendCommand } from '../../lib/messages';
 import { clearBlocks, saveDocument, setBlocks, setProgress } from '../../lib/storage';
 import { cn } from '@/lib/utils';
-import { t, tr } from '../../lib/i18n';
+import { t, tr, trName } from '../../lib/i18n';
 
 /** Font sizes of the text, smallest to largest; index 1 is the side panel's size. */
 const ZOOM = ['text-sm', 'text-[15px]', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl'];
@@ -245,7 +245,7 @@ export default function App() {
                       />
                     ) : (
                       <h2 className="flex-1 truncate font-serif text-xl font-semibold tracking-tight">
-                        {blocks[0]!.sourceTitle}
+                        {trName(blocks[0]!.sourceTitle)}
                       </h2>
                     )}
                     {paged && !composing && (

@@ -92,7 +92,7 @@ export function createLocalTtsClient(deps: LocalTtsClientDeps): LocalTtsClient {
       created = await openOffscreen();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      handleStatus(engine, 'error', undefined, `Não foi possível abrir o motor neural (${reason})`);
+      handleStatus(engine, 'error', undefined, `Não foi possível abrir o motor neural: ${reason}`);
       throw err;
     }
     // A fresh document has nothing loaded, whatever we remember.
@@ -139,7 +139,7 @@ export function createLocalTtsClient(deps: LocalTtsClientDeps): LocalTtsClient {
       if (engine === 'system') throw new Error('Motor local não selecionado');
       const label = getEngineDefinition(engine).label;
       const voiceId = await deps.getVoice(engine, options.lang);
-      if (!voiceId) throw new Error(`${label} não tem voz para o idioma ${options.lang}`);
+      if (!voiceId) throw new Error(`Motor sem voz para o idioma: ${label} (${options.lang})`);
 
       const requestId = newRequestId();
       currentRequestId = requestId;

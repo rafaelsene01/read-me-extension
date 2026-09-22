@@ -19,7 +19,7 @@ import { languageName } from './Controls';
 import { LANGS } from './TranslatePanel';
 import { applyEdit, applyLang } from '../lib/edit';
 import { sendCommand } from '../lib/messages';
-import { t, tr } from '../lib/i18n';
+import { t, tr, trName } from '../lib/i18n';
 import { revealElement } from '../lib/scroll';
 import { removeBlock, setBlocks } from '../lib/storage';
 import { isStale } from '../lib/translate';
@@ -190,10 +190,10 @@ export default function BlockList({
           <Card key={block.id} className={cn('border bg-card py-3', !bare && 'gap-3')}>
             <CardHeader className={cn('flex items-center gap-1 px-3', bare && 'hidden')}>
               <span
-                title={block.sourceUrl}
+                title={trName(block.sourceUrl)}
                 className="flex-1 truncate text-xs text-muted-foreground"
               >
-                {block.sourceUrl}
+                {trName(block.sourceUrl)}
               </span>
               {/* On the documents page the language belongs to the whole document and
                   lives in its header, next to the page navigation. */}

@@ -60,7 +60,7 @@ export function createTtsHost(emit: EmitWorkerEvent): (command: WorkerCommand) =
         type: 'status',
         engine,
         status: 'error',
-        error: `${label} não pôde ser executado neste dispositivo (${reason})`,
+        error: `Motor não pôde ser executado neste dispositivo: ${label} (${reason})`,
       });
     }
   }

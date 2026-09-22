@@ -54,7 +54,7 @@ export interface Prefs {
   rate: number;
   /** Default navigator.language. Also the default of the settings screen. */
   targetLang: string;
-  /** Interface language. Default: the closest one to navigator.language. */
+  /** Interface language. Default English. */
   uiLang: UiLang;
   /** Selected speech engine. Migrated users default to 'system'. */
   ttsEngine: TtsEngineId;

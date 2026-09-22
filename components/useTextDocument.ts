@@ -31,7 +31,8 @@ export function useTextDocument(
   const [text, setText] = useState('');
 
   useEffect(() => {
-    setTitle(block?.sourceTitle ?? '');
+    // An untitled document shows the (translated) placeholder, not the stored name.
+    setTitle(block?.sourceTitle === UNTITLED ? '' : (block?.sourceTitle ?? ''));
     setText(block?.text ?? '');
   }, [block?.id]);
 

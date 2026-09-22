@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { languageName } from './Controls';
 import { saveAudio } from '../lib/audio-library';
-import { t, tr } from '../lib/i18n';
+import { t, tr, trName } from '../lib/i18n';
 import { viewOf } from '../lib/engine';
 import { exportAudio, type ExportJob, type TtsHostPort } from '../lib/tts/export';
 import { getEngineDefinition, pickLocalVoice } from '../lib/tts/registry';
@@ -146,7 +146,7 @@ export default function Mp3Button({ blocks, prefs, compact }: Mp3ButtonProps) {
       const name = blocks[0]!.sourceTitle;
       // A copy stays in the Áudio section; the download is the same blob.
       await saveAudio(name, blob);
-      download(blob, name);
+      download(blob, trName(name));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { deleteAudio, getAudios, loadAudio, type AudioTrack } from '../lib/audio-library';
-import { getLocale, t } from '../lib/i18n';
+import { getLocale, t, trName } from '../lib/i18n';
 
 /** Size in the unit that keeps it to one or two digits. */
 function megabytes(bytes: number): string {
@@ -63,7 +63,7 @@ export default function AudioList() {
     if (!url) return;
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${track.name}.mp3`;
+    link.download = `${trName(track.name)}.mp3`;
     link.click();
   }
 
@@ -85,7 +85,7 @@ export default function AudioList() {
           <li key={track.id}>
             <Card className="flex-row items-center gap-3 border bg-card p-3">
               <span className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="truncate font-medium">{track.name}</span>
+                <span className="truncate font-medium">{trName(track.name)}</span>
                 <span className="text-xs text-muted-foreground">
                   {new Date(track.createdAt).toLocaleString(getLocale())} · {megabytes(track.size)}
                 </span>
@@ -97,7 +97,7 @@ export default function AudioList() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={t('Baixar {name}', { name: track.name })}
+                    aria-label={t('Baixar {name}', { name: trName(track.name) })}
                     disabled={!sources[track.id]}
                     onClick={() => download(track)}
                   >
@@ -111,7 +111,7 @@ export default function AudioList() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={t('Excluir {name}', { name: track.name })}
+                    aria-label={t('Excluir {name}', { name: trName(track.name) })}
                     onClick={() => setPendingDelete(track)}
                   >
                     <Trash2 />
@@ -130,7 +130,7 @@ export default function AudioList() {
             <DialogTitle>{t('Excluir áudio?')}</DialogTitle>
             <DialogDescription>
               {t('"{name}" será removido. O documento continua na biblioteca.', {
-                name: pendingDelete?.name ?? '',
+                name: trName(pendingDelete?.name ?? ''),
               })}
             </DialogDescription>
           </DialogHeader>

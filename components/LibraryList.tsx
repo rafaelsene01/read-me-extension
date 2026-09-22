@@ -47,7 +47,7 @@ import LoadingOverlay, { LoadingMark } from './LoadingOverlay';
 import { useReplaceGuard } from './useReplaceGuard';
 import { deleteBook } from '../lib/book-assets';
 import { documentKind, type LibraryDocument } from '../lib/document';
-import { getLocale, t, tr } from '../lib/i18n';
+import { getLocale, t, tr, trName } from '../lib/i18n';
 import {
   createFolder,
   deleteDocument,
@@ -109,7 +109,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     (doc) =>
       (doc.folder ?? null) === folder &&
       (kind === ANY || documentKind(doc) === kind) &&
-      doc.name.toLowerCase().includes(search.trim().toLowerCase()),
+      trName(doc.name).toLowerCase().includes(search.trim().toLowerCase()),
   );
 
   const filtering = search.trim() !== '' || kind !== ANY;
@@ -136,7 +136,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label={t('Ações de {name}', { name: doc.name })}>
+          <Button variant="ghost" size="icon-sm" aria-label={t('Ações de {name}', { name: trName(doc.name) })}>
             <MoreVertical />
           </Button>
         </DropdownMenuTrigger>
@@ -378,7 +378,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 >
                   {cover(doc, 'h-40 w-full')}
                   <span className="flex flex-col gap-1 p-3">
-                    <span className="truncate font-serif text-sm font-medium">{doc.name}</span>
+                    <span className="truncate font-serif text-sm font-medium">{trName(doc.name)}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
                         {tr(documentKind(doc))}
@@ -408,7 +408,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 >
                   {cover(doc, 'h-16 w-12 rounded-sm')}
                   <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                    <span className="w-full truncate font-serif font-medium">{doc.name}</span>
+                    <span className="w-full truncate font-serif font-medium">{trName(doc.name)}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
                         {tr(documentKind(doc))}
@@ -472,7 +472,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           <DialogHeader>
             <DialogTitle>{t('Excluir documento?')}</DialogTitle>
             <DialogDescription>
-              {t('"{name}" será removido da biblioteca.', { name: pendingDelete?.name ?? '' })}
+              {t('"{name}" será removido da biblioteca.', { name: trName(pendingDelete?.name ?? '') })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

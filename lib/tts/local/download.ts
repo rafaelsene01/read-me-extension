@@ -12,7 +12,7 @@ export async function ensureCached(
 
   const response = await fetch(url);
   if (!response.ok || !response.body) {
-    throw new Error(`Falha ao baixar o modelo (HTTP ${response.status})`);
+    throw new Error(`Falha ao baixar o modelo: HTTP ${response.status}`);
   }
 
   const [store, count] = response.body.tee();

@@ -134,7 +134,9 @@ describe('createLocalTtsClient', () => {
   it('refuses a language the engine has no voice for', async () => {
     const h = harness({ voice: null });
 
-    await expect(h.client.speak('Hola.', { lang: 'es', rate: 1 })).rejects.toThrow('Kokoro 82M não tem voz');
+    await expect(h.client.speak('Hola.', { lang: 'es', rate: 1 })).rejects.toThrow(
+      'Motor sem voz para o idioma: Kokoro 82M (es)',
+    );
     expect(h.sent).toEqual([]);
   });
 
