@@ -31,8 +31,13 @@ export default function AudioList() {
     };
     load();
     // Generating an MP3 happens elsewhere on the page, so follow the store.
-    chrome.storage.local.onChanged.addListener(load);
-    return () => chrome.storage.local.onChanged.removeListener(load);
+    // Only the tracks: reading writes the cursor once per sentence, and every
+    // reload hands the players new URLs, which restarts what is being heard.
+    const onChanged = (changes: Record<string, unknown>): void => {
+      if (changes.audios) load();
+    };
+    chrome.storage.local.onChanged.addListener(onChanged);
+    return () => chrome.storage.local.onChanged.removeListener(onChanged);
   }, []);
 
   useEffect(() => {

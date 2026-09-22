@@ -97,9 +97,14 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
       );
     };
     load();
-    // Saves happen from other views too, so follow the store.
-    chrome.storage.local.onChanged.addListener(load);
-    return () => chrome.storage.local.onChanged.removeListener(load);
+    // Saves happen from other views too, so follow the store. Only the library's
+    // keys: reading writes the cursor once per sentence, and reloading every
+    // book on each of those writes slowed the page while it read.
+    const onChanged = (changes: Record<string, unknown>): void => {
+      if (changes.documents || changes.folders) load();
+    };
+    chrome.storage.local.onChanged.addListener(onChanged);
+    return () => chrome.storage.local.onChanged.removeListener(onChanged);
   }, []);
 
   // A folder deleted elsewhere must not leave the view inside nothing.
