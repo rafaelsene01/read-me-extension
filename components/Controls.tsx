@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, CircleAlert, Pause, Play, Square } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,8 @@ interface ControlsProps {
   empty: boolean;
   /** Estimated reading time at the current speed, shown under the speed slider. */
   readingTime?: string | null;
+  /** Estimated time from the block being read to the end, shown next to readingTime. */
+  remainingTime?: string | null;
   /** Extra buttons between the speed and the minimize button. */
   actions?: ReactNode;
   /** Collapsed: the transport line stays; the model status and the alerts go. */
@@ -63,11 +65,13 @@ export default function Controls({
   translationLang,
   empty,
   readingTime,
+  remainingTime,
   actions,
   minimized = false,
   onToggleMinimized,
 }: ControlsProps) {
   const [voices, setVoices] = useState<Voice[]>([]);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void listVoices().then(setVoices);
@@ -84,6 +88,30 @@ export default function Controls({
   const model = useModelAvailability(engine, tts);
   const blocked =
     empty || (engine === 'system' ? voice === null : localVoice === null || !model.available);
+
+  // Space toggles play/pause, unless the key belongs to whatever has focus (a
+  // field being typed in, a button Space already presses, a slider, a menu) or
+  // the controls are hidden (the documents page keeps them mounted on the library tab).
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.code !== 'Space' || event.repeat || blocked) return;
+      if (!cardRef.current?.checkVisibility()) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest(
+            'input, textarea, select, button, a[href], [role="slider"], [role="menuitem"], [role="option"]',
+          ))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void sendCommand({ type: playing ? 'pause' : 'play' });
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [blocked, playing]);
 
   // Voices of the language being read first, then the rest alphabetically.
   const base = voiceLang.split('-')[0]!.toLowerCase();
@@ -117,7 +145,7 @@ export default function Controls({
   const selectedVoiceId = engine === 'system' ? voice?.voiceName : localVoice?.id;
 
   return (
-    <Card className="gap-4 border bg-card py-4">
+    <Card ref={cardRef} className="gap-4 border bg-card py-4">
       <CardContent className="flex flex-col gap-4 px-4">
         {/* The transport line: voice, play/pause, stop, speed, the extra actions
             and the minimize button, always on one line and never collapsed —
@@ -181,6 +209,7 @@ export default function Controls({
             {readingTime && (
               <span className="truncate text-xs text-muted-foreground">
                 {t('Leitura estimada: {time}', { time: readingTime })}
+                {remainingTime && ` · ${t('Restante: {time}', { time: remainingTime })}`}
               </span>
             )}
           </div>

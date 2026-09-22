@@ -90,6 +90,7 @@ function defaultPrefs(): Prefs {
     favoriteVoices: [],
     modelUsedAt: {},
     libraryView: 'list',
+    doubleClickPlay: true,
   };
 }
 

@@ -76,6 +76,8 @@ export interface Prefs {
   modelUsedAt: Partial<Record<LocalEngineId, number>>;
   /** How the library shows the documents: rows or cards. */
   libraryView: 'list' | 'grid';
+  /** Double-clicking a sentence starts the reading there. Default true. */
+  doubleClickPlay: boolean;
 }
 
 export interface PlaybackState {

@@ -1,4 +1,4 @@
-import type { Scope } from './storage';
+import { getPrefs, type Scope } from './storage';
 import type { Cursor, PlaybackState } from './types';
 import type { LocalEngineId, TtsEngineId } from './tts/types';
 
@@ -47,6 +47,16 @@ export function isCommand(value: unknown): value is Command {
 
 export function sendCommand(command: Command): Promise<PlaybackState | null> {
   return chrome.runtime.sendMessage(command);
+}
+
+/**
+ * Double-click on a sentence: moves the reading to `cursor` and starts it there
+ * unless it is already playing. Does nothing when the user turned it off.
+ */
+export async function playAt(cursor: Cursor): Promise<void> {
+  if (!(await getPrefs()).doubleClickPlay) return;
+  const state = await sendCommand({ type: 'seek', cursor });
+  if (state && !state.playing) await sendCommand({ type: 'play' });
 }
 
 type CommandHandler = (

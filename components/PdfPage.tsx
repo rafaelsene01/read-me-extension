@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { loadBook } from '../lib/book-assets';
-import { sendCommand } from '../lib/messages';
+import { playAt, sendCommand } from '../lib/messages';
 import { drawPdfPage, pdfPageLayout } from '../lib/pdf';
 import { sentenceBoxes, type PdfBox, type PdfParagraph } from '../lib/pdf-text';
 import { revealElement } from '../lib/scroll';
@@ -111,6 +111,10 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
                   cursor: { blockId: block.id, paraIndex, sentIndex },
                 })
               }
+              onDoubleClick={() => void playAt({ blockId: block.id, paraIndex, sentIndex })}
+              // A mouse click does not take focus, so Space then plays/pauses
+              // instead of pressing this sentence again; Tab still reaches it.
+              onMouseDown={(event) => event.preventDefault()}
               className="group pointer-events-none absolute inset-0"
             >
               {sentence.map((box, lineIndex) => (

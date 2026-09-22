@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { loadBook } from '../lib/book-assets';
 import { renderChapter } from '../lib/book-render';
-import { sendCommand } from '../lib/messages';
+import { playAt, sendCommand } from '../lib/messages';
 import { revealElement } from '../lib/scroll';
 import type { Block, Cursor } from '../lib/types';
 
@@ -73,6 +73,13 @@ export default function BookChapter({ block, cursor, textSize, fallback }: BookC
     style.textContent = `${view.css}\n${SENTENCE_CSS}`;
     root.replaceChildren(style, view.html);
 
+    function onDoubleClick(event: Event) {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest('a[href]')) return;
+      const at = /^(\d+):(\d+)$/.exec(target.closest('.rm-s')?.getAttribute('data-s') ?? '');
+      if (at) void playAt({ blockId: block.id, paraIndex: Number(at[1]), sentIndex: Number(at[2]) });
+    }
+
     function onClick(event: Event) {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -96,7 +103,11 @@ export default function BookChapter({ block, cursor, textSize, fallback }: BookC
     }
 
     root.addEventListener('click', onClick);
-    return () => root.removeEventListener('click', onClick);
+    root.addEventListener('dblclick', onDoubleClick);
+    return () => {
+      root.removeEventListener('click', onClick);
+      root.removeEventListener('dblclick', onDoubleClick);
+    };
   }, [view, block.id]);
 
   // The sentence being read is highlighted and kept in view (P1-E AC8).

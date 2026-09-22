@@ -409,6 +409,14 @@ export default function App() {
                   translationLang={translationLang}
                   empty={empty}
                   readingTime={readingTime(blocks, prefs.rate)}
+                  remainingTime={
+                    state.cursor
+                      ? readingTime(
+                          blocks.slice(Math.max(0, blocks.findIndex((block) => block.id === state.cursor!.blockId))),
+                          prefs.rate,
+                        )
+                      : null
+                  }
                   actions={<Mp3Button blocks={blocks} prefs={prefs} compact />}
                   minimized={minimized}
                   onToggleMinimized={() => setMinimized((current) => !current)}

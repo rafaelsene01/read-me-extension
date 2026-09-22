@@ -5,6 +5,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { languageName } from './Controls';
 import { LANGS } from './TranslatePanel';
 import { t, UI_LANGS, type UiLang } from '../lib/i18n';
@@ -53,6 +54,14 @@ export default function Settings({ prefs }: { prefs: Prefs }) {
         <span className="text-xs text-muted-foreground">
           {t('Usado ao traduzir e ao ouvir traduzido.')}
         </span>
+      </label>
+
+      <label className="flex items-center justify-between gap-4">
+        <span className="font-medium">{t('Duplo clique numa frase inicia a leitura')}</span>
+        <Switch
+          checked={prefs.doubleClickPlay}
+          onCheckedChange={(doubleClickPlay) => void setPrefs({ doubleClickPlay })}
+        />
       </label>
     </div>
   );

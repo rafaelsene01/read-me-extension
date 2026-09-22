@@ -18,7 +18,7 @@ import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
 import { LANGS } from './TranslatePanel';
 import { applyEdit, applyLang } from '../lib/edit';
-import { sendCommand } from '../lib/messages';
+import { playAt, sendCommand } from '../lib/messages';
 import { t, tr, trName } from '../lib/i18n';
 import { revealElement } from '../lib/scroll';
 import { removeBlock, setBlocks } from '../lib/storage';
@@ -145,6 +145,7 @@ export default function BlockList({
                     cursor: { blockId: block.id, paraIndex, sentIndex },
                   })
                 }
+                onDoubleClick={() => void playAt({ blockId: block.id, paraIndex, sentIndex })}
                 className={cn(
                   'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors duration-200',
                   active
