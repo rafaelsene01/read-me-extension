@@ -13,6 +13,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { setPrefs } from '../lib/storage';
+import { t } from '../lib/i18n';
 import type { TtsEngineId } from '../lib/tts/types';
 
 export interface VoiceOption {
@@ -38,6 +39,7 @@ interface TtsVoiceSelectProps {
   onChange: (option: VoiceOption) => void;
 }
 
+/** Group key of the starred voices; its heading is translated. */
 const FAVORITES = 'Favoritas';
 /** Long lists (system voices) get a search box. */
 const SEARCH_FROM = 8;
@@ -105,14 +107,14 @@ export default function TtsVoiceSelect({
           size="icon"
           role="combobox"
           aria-expanded={open}
-          aria-label={selected ? `Voz: ${selected.name}` : 'Voz'}
+          aria-label={selected ? t('Voz: {name}', { name: selected.name }) : t('Voz')}
           aria-busy={loading}
           title={
             loading
-              ? `Preparando ${selected?.name ?? 'a voz'}…`
+              ? t('Preparando {name}…', { name: selected?.name ?? t('Voz') })
               : selected
                 ? `${selected.name} · ${selected.detail}`
-                : 'Voz'
+                : t('Voz')
           }
           disabled={options.length === 0}
           className="relative size-10 shrink-0 rounded-full p-0"
@@ -134,11 +136,11 @@ export default function TtsVoiceSelect({
       </PopoverTrigger>
       <PopoverContent className="w-72 max-w-[calc(100vw-2rem)] p-0" align="start">
         <Command>
-          {options.length >= SEARCH_FROM && <CommandInput placeholder="Buscar voz…" />}
+          {options.length >= SEARCH_FROM && <CommandInput placeholder={t('Buscar voz…')} />}
           <CommandList>
-            <CommandEmpty>Nenhuma voz encontrada</CommandEmpty>
+            <CommandEmpty>{t('Nenhuma voz encontrada')}</CommandEmpty>
             {ordered.map(([label, items]) => (
-              <CommandGroup key={label} heading={label}>
+              <CommandGroup key={label} heading={label === FAVORITES ? t('Favoritas') : label}>
                 {items.map((option) => {
                   const key = voiceKey(option.engine, option.id);
                   const favorite = favorites.includes(key);
@@ -160,8 +162,12 @@ export default function TtsVoiceSelect({
                         variant="ghost"
                         size="icon-xs"
                         aria-pressed={favorite}
-                        aria-label={favorite ? `Remover ${option.name} dos favoritos` : `Favoritar ${option.name}`}
-                        title={favorite ? 'Remover dos favoritos' : 'Favoritar'}
+                        aria-label={
+                          favorite
+                            ? t('Remover {name} dos favoritos', { name: option.name })
+                            : t('Favoritar {name}', { name: option.name })
+                        }
+                        title={t(favorite ? 'Remover dos favoritos' : 'Favoritar')}
                         // The row selects on click; the star must not.
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => {

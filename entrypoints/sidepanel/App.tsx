@@ -6,6 +6,7 @@ import TranslatePanel from '../../components/TranslatePanel';
 import { useReader } from '../../components/useReader';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { t, tr } from '../../lib/i18n';
 
 export default function App() {
   const { state, blocks, prefs } = useReader();
@@ -23,7 +24,7 @@ export default function App() {
           {state.error && (
             <Alert variant="destructive">
               <CircleAlert />
-              <AlertDescription>{state.error}</AlertDescription>
+              <AlertDescription>{tr(state.error)}</AlertDescription>
             </Alert>
           )}
 
@@ -48,7 +49,7 @@ export default function App() {
             <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
               <TextSelect className="size-5" />
             </span>
-            <p className="font-serif text-base">Capture um texto para começar.</p>
+            <p className="font-serif text-base">{t('Capture um texto para começar.')}</p>
           </div>
         ) : (
           // Small inset so focus rings and card shadows are not clipped by the scroll box.

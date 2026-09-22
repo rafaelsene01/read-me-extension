@@ -47,6 +47,7 @@ import LoadingOverlay, { LoadingMark } from './LoadingOverlay';
 import { useReplaceGuard } from './useReplaceGuard';
 import { deleteBook } from '../lib/book-assets';
 import { documentKind, type LibraryDocument } from '../lib/document';
+import { getLocale, t, tr } from '../lib/i18n';
 import {
   createFolder,
   deleteDocument,
@@ -124,7 +125,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     setError(null);
     if (!(await deleteDocument(doc.id)).ok) {
       // Nothing was written: the item is still in the library.
-      setError('Falha ao excluir');
+      setError(t('Falha ao excluir'));
       return;
     }
     // A no-op when the document has no file stored.
@@ -135,35 +136,35 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label={`Ações de ${doc.name}`}>
+          <Button variant="ghost" size="icon-sm" aria-label={t('Ações de {name}', { name: doc.name })}>
             <MoreVertical />
           </Button>
         </DropdownMenuTrigger>
         {/* Also the way to file a document without dragging, which WCAG 2.2 requires. */}
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>Mover para</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('Mover para')}</DropdownMenuLabel>
           <DropdownMenuItem
             disabled={doc.folder === undefined}
-            onSelect={() => void run(moveDocument(doc.id, null), 'Falha ao mover')}
+            onSelect={() => void run(moveDocument(doc.id, null), t('Falha ao mover'))}
           >
             <Library />
-            Biblioteca
+            {t('Biblioteca')}
           </DropdownMenuItem>
           {folders.map((name) => (
             <DropdownMenuItem
               key={name}
               disabled={doc.folder === name}
-              onSelect={() => void run(moveDocument(doc.id, name), 'Falha ao mover')}
+              onSelect={() => void run(moveDocument(doc.id, name), t('Falha ao mover'))}
             >
               <Folder />
               <span className="truncate">{name}</span>
             </DropdownMenuItem>
           ))}
-          {folders.length === 0 && <DropdownMenuItem disabled>Nenhuma pasta criada</DropdownMenuItem>}
+          {folders.length === 0 && <DropdownMenuItem disabled>{t('Nenhuma pasta criada')}</DropdownMenuItem>}
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setPendingDelete(doc)}>
             <Trash2 />
-            Excluir
+            {t('Excluir')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -210,7 +211,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
         event.preventDefault();
         setDropTarget(null);
         const docId = event.dataTransfer.getData('text/plain');
-        if (docId) void run(moveDocument(docId, name), 'Falha ao mover');
+        if (docId) void run(moveDocument(docId, name), t('Falha ao mover'));
       },
       'data-over': dropTarget === id ? '' : undefined,
     };
@@ -224,7 +225,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
       {(guard.error ?? error) && (
         <Alert variant="destructive">
           <CircleAlert />
-          <AlertDescription>{guard.error ?? error}</AlertDescription>
+          <AlertDescription>{tr(guard.error ?? error ?? '')}</AlertDescription>
         </Alert>
       )}
 
@@ -234,21 +235,21 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nome"
-            aria-label="Buscar na biblioteca"
+            placeholder={t('Buscar por nome')}
+            aria-label={t('Buscar na biblioteca')}
             className="pl-9"
           />
         </div>
 
         <Select value={kind} onValueChange={setKind}>
-          <SelectTrigger aria-label="Filtrar por formato" className="w-40">
+          <SelectTrigger aria-label={t('Filtrar por formato')} className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>Todos os formatos</SelectItem>
+            <SelectItem value={ANY}>{t('Todos os formatos')}</SelectItem>
             {kinds.map((name) => (
               <SelectItem key={name} value={name}>
-                {name}
+                {tr(name)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -259,13 +260,13 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
             <Button
               variant="outline"
               size="icon"
-              aria-label="Nova pasta"
+              aria-label={t('Nova pasta')}
               onClick={() => setNewFolder('')}
             >
               <FolderPlus />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Nova pasta</TooltipContent>
+          <TooltipContent>{t('Nova pasta')}</TooltipContent>
         </Tooltip>
 
         <ToggleGroup
@@ -274,17 +275,17 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           value={view}
           onValueChange={(next) => next && setView(next as 'list' | 'grid')}
         >
-          <ToggleGroupItem value="list" aria-label="Ver em lista">
+          <ToggleGroupItem value="list" aria-label={t('Ver em lista')}>
             <List />
           </ToggleGroupItem>
-          <ToggleGroupItem value="grid" aria-label="Ver em cartões">
+          <ToggleGroupItem value="grid" aria-label={t('Ver em cartões')}>
             <LayoutGrid />
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
 
       {folder !== null && (
-        <nav aria-label="Local" className="flex items-center gap-1 text-sm">
+        <nav aria-label={t('Local')} className="flex items-center gap-1 text-sm">
           <Button
             variant="ghost"
             size="sm"
@@ -293,14 +294,14 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
             {...dropProps(null)}
           >
             <Library />
-            Biblioteca
+            {t('Biblioteca')}
           </Button>
           <ChevronRight className="size-4 text-muted-foreground" />
           <span className="font-medium">{folder}</span>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`Excluir pasta ${folder}`}
+            aria-label={t('Excluir pasta {name}', { name: folder })}
             className="ml-auto"
             onClick={() => setPendingFolderDelete(folder)}
           >
@@ -330,7 +331,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
         </ul>
       )}
 
-      <LoadingOverlay open={guard.opening} label="Abrindo documento…" />
+      <LoadingOverlay open={guard.opening} label={t('Abrindo documento…')} />
 
       {loading ? (
         <div
@@ -338,7 +339,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-8 text-muted-foreground"
         >
           <LoadingMark />
-          Carregando biblioteca…
+          {t('Carregando biblioteca…')}
         </div>
       ) : shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center text-muted-foreground">
@@ -347,10 +348,10 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           </span>
           <p className="font-serif text-base">
             {filtering
-              ? 'Nenhum documento corresponde ao filtro.'
+              ? t('Nenhum documento corresponde ao filtro.')
               : folder !== null
-                ? 'Pasta vazia. Arraste documentos para cá.'
-                : 'Nenhum documento salvo.'}
+                ? t('Pasta vazia. Arraste documentos para cá.')
+                : t('Nenhum documento salvo.')}
           </p>
           {filtering && (
             <Button
@@ -361,7 +362,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 setKind(ANY);
               }}
             >
-              Limpar filtros
+              {t('Limpar filtros')}
             </Button>
           )}
         </div>
@@ -380,10 +381,10 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                     <span className="truncate font-serif text-sm font-medium">{doc.name}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
-                        {documentKind(doc)}
+                        {tr(documentKind(doc))}
                       </Badge>
                       <span className="truncate text-xs text-muted-foreground">
-                        {new Date(doc.savedAt).toLocaleDateString()}
+                        {new Date(doc.savedAt).toLocaleDateString(getLocale())}
                       </span>
                     </span>
                   </span>
@@ -410,10 +411,10 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                     <span className="w-full truncate font-serif font-medium">{doc.name}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
-                        {documentKind(doc)}
+                        {tr(documentKind(doc))}
                       </Badge>
                       <span className="text-xs font-normal text-muted-foreground">
-                        {new Date(doc.savedAt).toLocaleString()}
+                        {new Date(doc.savedAt).toLocaleString(getLocale())}
                       </span>
                     </span>
                   </span>
@@ -434,29 +435,29 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
               event.preventDefault();
               const name = newFolder ?? '';
               setNewFolder(null);
-              void run(createFolder(name), 'Falha ao criar a pasta');
+              void run(createFolder(name), t('Falha ao criar a pasta'));
             }}
           >
             <DialogHeader>
-              <DialogTitle>Nova pasta</DialogTitle>
+              <DialogTitle>{t('Nova pasta')}</DialogTitle>
               <DialogDescription>
-                Arraste documentos para a pasta, ou use o menu de cada um.
+                {t('Arraste documentos para a pasta, ou use o menu de cada um.')}
               </DialogDescription>
             </DialogHeader>
             <Input
               autoFocus
               value={newFolder ?? ''}
               onChange={(event) => setNewFolder(event.target.value)}
-              placeholder="Nome da pasta"
-              aria-label="Nome da pasta"
+              placeholder={t('Nome da pasta')}
+              aria-label={t('Nome da pasta')}
               className="my-4"
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setNewFolder(null)}>
-                Cancelar
+                {t('Cancelar')}
               </Button>
               <Button type="submit" disabled={!newFolder?.trim()}>
-                Criar
+                {t('Criar')}
               </Button>
             </DialogFooter>
           </form>
@@ -469,17 +470,17 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Excluir documento?</DialogTitle>
+            <DialogTitle>{t('Excluir documento?')}</DialogTitle>
             <DialogDescription>
-              "{pendingDelete?.name}" será removido da biblioteca.
+              {t('"{name}" será removido da biblioteca.', { name: pendingDelete?.name ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingDelete(null)}>
-              Cancelar
+              {t('Cancelar')}
             </Button>
             <Button variant="destructive" onClick={() => void confirmDelete()}>
-              Excluir
+              {t('Excluir')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -491,25 +492,26 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Excluir pasta?</DialogTitle>
+            <DialogTitle>{t('Excluir pasta?')}</DialogTitle>
             <DialogDescription>
-              "{pendingFolderDelete}" será removida. Os documentos dentro dela voltam para a
-              biblioteca.
+              {t('"{name}" será removida. Os documentos dentro dela voltam para a biblioteca.', {
+                name: pendingFolderDelete ?? '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingFolderDelete(null)}>
-              Cancelar
+              {t('Cancelar')}
             </Button>
             <Button
               variant="destructive"
               onClick={() => {
                 const name = pendingFolderDelete;
                 setPendingFolderDelete(null);
-                if (name) void run(deleteFolder(name), 'Falha ao excluir a pasta');
+                if (name) void run(deleteFolder(name), t('Falha ao excluir a pasta'));
               }}
             >
-              Excluir
+              {t('Excluir')}
             </Button>
           </DialogFooter>
         </DialogContent>

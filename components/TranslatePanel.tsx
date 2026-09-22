@@ -11,9 +11,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MESSAGES } from './CaptureBar';
 import { languageName } from './Controls';
 import { applyLang } from '../lib/edit';
+import { t, tr } from '../lib/i18n';
 import { segmentBlock } from '../lib/segment';
 import { setBlocks, setPrefs } from '../lib/storage';
 import {
@@ -63,7 +63,7 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
     !supported || unavailablePair || translatable.length === 0 || progress !== null;
 
   function fail(cause: unknown): void {
-    setError(cause instanceof Error ? cause.message : 'Falha na tradução');
+    setError(cause instanceof Error ? tr(cause.message) : t('Falha na tradução'));
   }
 
   function start(): void {
@@ -119,15 +119,15 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
             };
           }),
         );
-        if (!result.ok) setError(MESSAGES.quota);
+        if (!result.ok) setError(t('Armazenamento cheio'));
       })
       .catch(fail)
       .finally(() => setProgress(null));
   }
 
   const alerts = [
-    !supported && 'Tradução não suportada neste navegador',
-    unavailablePair && 'Par de idiomas não disponível',
+    !supported && t('Tradução não suportada neste navegador'),
+    unavailablePair && t('Par de idiomas não disponível'),
     error,
   ].filter((text): text is string => Boolean(text) && !dismissed.includes(text as string));
 
@@ -146,8 +146,8 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
         }}
       >
         <TabsList className="w-full">
-          <TabsTrigger value="original">Original</TabsTrigger>
-          <TabsTrigger value="translation">{bookOnly ? 'Ouvir traduzido' : 'Tradução'}</TabsTrigger>
+          <TabsTrigger value="original">{t('Original')}</TabsTrigger>
+          <TabsTrigger value="translation">{t(bookOnly ? 'Ouvir traduzido' : 'Tradução')}</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -162,7 +162,7 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
               void setPrefs({ targetLang });
             }}
           >
-            <SelectTrigger aria-label="Idioma de destino" className="flex-1">
+            <SelectTrigger aria-label={t('Idioma de destino')} className="flex-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -176,7 +176,7 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
           {!bookOnly && (
             <Button variant="outline" disabled={blocked} onClick={translate}>
               <Languages />
-              Traduzir
+              {t('Traduzir')}
             </Button>
           )}
         </div>
@@ -191,7 +191,7 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Fechar aviso"
+            aria-label={t('Fechar aviso')}
             className="absolute top-2 right-2"
             onClick={() => dismiss(text)}
           >

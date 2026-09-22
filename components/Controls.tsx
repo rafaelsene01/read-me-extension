@@ -8,6 +8,7 @@ import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import TtsModelStatus, { useModelAvailability } from './TtsModelStatus';
 import TtsVoiceSelect, { voiceKey, type VoiceOption } from './TtsVoiceSelect';
+import { getLocale, t, tr } from '../lib/i18n';
 import { sendCommand } from '../lib/messages';
 import { ENGINE_IDS, getEngineDefinition, pickerVoices, pickLocalVoice } from '../lib/tts/registry';
 import type { TtsEngineId, TtsRuntimeStatus } from '../lib/tts/types';
@@ -42,12 +43,12 @@ interface ControlsProps {
  */
 function groupLabel(engine: TtsEngineId, multilingual: boolean): string {
   const { label, local } = getEngineDefinition(engine);
-  return `${local ? 'Pro' : 'Grátis'} · ${label}${multilingual ? ' · Multilinguagem' : ''}`;
+  return `${local ? 'Pro' : t('Grátis')} · ${tr(label)}${multilingual ? ` · ${t('Multilinguagem')}` : ''}`;
 }
 
 export function languageName(lang: string): string {
   try {
-    return new Intl.DisplayNames([navigator.language], { type: 'language' }).of(lang) ?? lang;
+    return new Intl.DisplayNames([getLocale()], { type: 'language' }).of(lang) ?? lang;
   } catch {
     // The page can declare anything in documentElement.lang.
     return lang;
@@ -139,7 +140,7 @@ export default function Controls({
           <Button
             size="icon-lg"
             className={cn('size-12 rounded-full', playing && 'animate-playing')}
-            aria-label={playing ? 'Pausar' : 'Ler'}
+            aria-label={t(playing ? 'Pausar' : 'Ler')}
             disabled={blocked}
             onClick={() => void sendCommand({ type: playing ? 'pause' : 'play' })}
           >
@@ -149,7 +150,7 @@ export default function Controls({
             variant="secondary"
             size="icon"
             className="rounded-full"
-            aria-label="Parar"
+            aria-label={t('Parar')}
             disabled={blocked}
             onClick={() => void sendCommand({ type: 'stop' })}
           >
@@ -158,7 +159,7 @@ export default function Controls({
 
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span id="rate-label">Velocidade</span>
+              <span id="rate-label">{t('Velocidade')}</span>
               <Badge variant="secondary" className="tabular-nums">
                 {prefs.rate.toFixed(1)}x
               </Badge>
@@ -179,7 +180,7 @@ export default function Controls({
             />
             {readingTime && (
               <span className="truncate text-xs text-muted-foreground">
-                Leitura estimada: {readingTime}
+                {t('Leitura estimada: {time}', { time: readingTime })}
               </span>
             )}
           </div>
@@ -191,7 +192,7 @@ export default function Controls({
               variant="ghost"
               size="icon-sm"
               aria-expanded={!minimized}
-              aria-label={minimized ? 'Expandir controles' : 'Minimizar controles'}
+              aria-label={t(minimized ? 'Expandir controles' : 'Minimizar controles')}
               onClick={onToggleMinimized}
             >
               {minimized ? <ChevronUp /> : <ChevronDown />}
@@ -204,21 +205,25 @@ export default function Controls({
         {!minimized && engine === 'system' && voices.length === 0 && (
           <Alert variant="destructive">
             <CircleAlert />
-            <AlertDescription>Nenhuma voz disponível neste navegador</AlertDescription>
+            <AlertDescription>{t('Nenhuma voz disponível neste navegador')}</AlertDescription>
           </Alert>
         )}
         {!minimized && engine === 'system' && voices.length > 0 && voice === null && (
           <Alert variant="destructive">
             <CircleAlert />
-            <AlertDescription>Sem voz instalada para {languageName(voiceLang)}</AlertDescription>
+            <AlertDescription>
+              {t('Sem voz instalada para {lang}', { lang: languageName(voiceLang) })}
+            </AlertDescription>
           </Alert>
         )}
         {!minimized && engine !== 'system' && localVoice === null && (
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>
-              {getEngineDefinition(engine).label} não tem voz de {languageName(voiceLang)}. Escolha
-              uma voz de outro idioma ou outro motor.
+              {t('{engine} não tem voz de {lang}. Escolha uma voz de outro idioma ou outro motor.', {
+                engine: getEngineDefinition(engine).label,
+                lang: languageName(voiceLang),
+              })}
             </AlertDescription>
           </Alert>
         )}

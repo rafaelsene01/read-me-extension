@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { sendCommand } from '../lib/messages';
+import { t, tr } from '../lib/i18n';
 import { deleteModel, getModelStatus, MODELS, type ModelInstallStatus } from '../lib/tts/model-cache';
 import type { LocalEngineId, TtsEngineId, TtsRuntimeStatus } from '../lib/tts/types';
 
@@ -76,19 +77,21 @@ export default function TtsModelStatus({ engine, model }: TtsModelStatusProps) {
   let line: string;
   switch (runtime?.status) {
     case 'downloading':
-      line = `Baixando voz neural… ${Math.round((runtime.progress ?? 0) * 100)}%`;
+      line = t('Baixando voz neural… {n}%', { n: Math.round((runtime.progress ?? 0) * 100) });
       break;
     case 'loading':
-      line = 'Inicializando modelo…';
+      line = t('Inicializando modelo…');
       break;
     case 'ready':
-      line = runtime.generating ? 'Gerando áudio…' : 'Pronto';
+      line = t(runtime.generating ? 'Gerando áudio…' : 'Pronto');
       break;
     case 'error':
-      line = 'Falha ao carregar';
+      line = t('Falha ao carregar');
       break;
     default:
-      line = install?.installed ? `Instalado · ${formatBytes(install.sizeBytes)}` : 'Modelo não baixado';
+      line = install?.installed
+        ? t('Instalado · {size}', { size: formatBytes(install.sizeBytes) })
+        : t('Modelo não baixado');
   }
 
   return (
@@ -104,8 +107,8 @@ export default function TtsModelStatus({ engine, model }: TtsModelStatusProps) {
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Remover modelo baixado"
-            title={`Remover modelo (${formatBytes(install.sizeBytes)})`}
+            aria-label={t('Remover modelo baixado')}
+            title={t('Remover modelo ({size})', { size: formatBytes(install.sizeBytes) })}
             onClick={() => void remove()}
           >
             <Trash2 />
@@ -119,19 +122,19 @@ export default function TtsModelStatus({ engine, model }: TtsModelStatusProps) {
           onClick={() => void sendCommand({ type: 'downloadTtsModel', engine })}
         >
           <Download />
-          Baixar modelo ({MODELS[engine].downloadSize})
+          {t('Baixar modelo ({size})', { size: MODELS[engine].downloadSize })}
         </Button>
       )}
 
       {busy && (
         <Progress
-          aria-label="Progresso do download"
+          aria-label={t('Progresso do download')}
           value={runtime?.status === 'downloading' ? (runtime.progress ?? 0) * 100 : 100}
         />
       )}
 
       {runtime?.status === 'error' && runtime.error && (
-        <p className="text-destructive break-words">{runtime.error}</p>
+        <p className="text-destructive break-words">{tr(runtime.error)}</p>
       )}
 
       {runtime?.status === 'error' && (
@@ -140,7 +143,7 @@ export default function TtsModelStatus({ engine, model }: TtsModelStatusProps) {
           size="sm"
           onClick={() => void sendCommand({ type: 'setTtsEngine', engine: 'system' })}
         >
-          Trocar para Voz do sistema
+          {t('Trocar para Voz do sistema')}
         </Button>
       )}
     </div>

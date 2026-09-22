@@ -1,5 +1,6 @@
 import type { LocalEngineId, TtsEngineId } from './tts/types';
 import type { TtsRuntimeStatus } from './tts/types';
+import type { UiLang } from './i18n';
 
 export interface Sentence {
   id: string;
@@ -51,8 +52,10 @@ export interface Cursor {
 export interface Prefs {
   /** 0.5 .. 2.0, default 1.0. */
   rate: number;
-  /** Default navigator.language. */
+  /** Default navigator.language. Also the default of the settings screen. */
   targetLang: string;
+  /** Interface language. Default: the closest one to navigator.language. */
+  uiLang: UiLang;
   /** Selected speech engine. Migrated users default to 'system'. */
   ttsEngine: TtsEngineId;
   /** Manual voice choice per language (system engine). */

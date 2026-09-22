@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { languageName } from './Controls';
 import { saveAudio } from '../lib/audio-library';
+import { t, tr } from '../lib/i18n';
 import { viewOf } from '../lib/engine';
 import { exportAudio, type ExportJob, type TtsHostPort } from '../lib/tts/export';
 import { getEngineDefinition, pickLocalVoice } from '../lib/tts/registry';
@@ -33,7 +34,7 @@ function startHost(engine: LocalEngineId): { port: TtsHostPort; dispose: () => v
     type: 'status',
     engine,
     status: 'error',
-    error: 'Geração do MP3 cancelada',
+    error: t('Geração do MP3 cancelada'),
   };
   try {
     const worker = new Worker(ttsWorkerUrl, { type: 'module' });
@@ -48,7 +49,7 @@ function startHost(engine: LocalEngineId): { port: TtsHostPort; dispose: () => v
               type: 'status',
               engine,
               status: 'error',
-              error: `Falha ao iniciar o motor neural: ${event.message}`,
+              error: `${t('Falha ao iniciar o motor neural')}: ${event.message}`,
             });
           worker.addEventListener('message', onMessage);
           worker.addEventListener('error', onError);
@@ -91,7 +92,10 @@ function buildJobs(blocks: Block[], prefs: Prefs, engine: LocalEngineId): Export
   for (const block of viewOf(blocks, prefs.activeTab)) {
     const voice = pickLocalVoice(engine, block.lang, prefs.voiceByEngine[engine]);
     if (!voice) {
-      return `${getEngineDefinition(engine).label} não tem voz de ${languageName(block.lang)}`;
+      return t('{engine} não tem voz de {lang}', {
+        engine: getEngineDefinition(engine).label,
+        lang: languageName(block.lang),
+      });
     }
     for (const paragraph of block.paragraphs) {
       const text = paragraph.sentences.map((sentence) => sentence.text).join(' ');
@@ -153,10 +157,12 @@ export default function Mp3Button({ blocks, prefs, compact }: Mp3ButtonProps) {
   }
 
   const hint = system
-    ? 'Escolha uma voz neural para gerar MP3'
+    ? t('Escolha uma voz neural para gerar MP3')
     : busy
-      ? `Gerando MP3: ${progress}%`
-      : (error ?? 'Gerar MP3');
+      ? t('Gerando MP3: {n}%', { n: progress ?? 0 })
+      : error
+        ? tr(error)
+        : t('Gerar MP3');
 
   const button = compact ? (
     <Button
@@ -209,14 +215,14 @@ export default function Mp3Button({ blocks, prefs, compact }: Mp3ButtonProps) {
       {wrapped}
       {busy && (
         <div className="flex items-center gap-2">
-          <Progress aria-label="Progresso do MP3" value={progress} />
+          <Progress aria-label={t('Progresso do MP3')} value={progress} />
           <span className="text-xs text-muted-foreground tabular-nums">{progress}%</span>
         </div>
       )}
       {error && (
         <Alert variant="destructive">
           <CircleAlert />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{tr(error)}</AlertDescription>
         </Alert>
       )}
     </div>

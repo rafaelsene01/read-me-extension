@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { deleteAudio, getAudios, loadAudio, type AudioTrack } from '../lib/audio-library';
+import { getLocale, t } from '../lib/i18n';
 
 /** Size in the unit that keeps it to one or two digits. */
 function megabytes(bytes: number): string {
@@ -72,7 +73,7 @@ export default function AudioList() {
         <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
           <FileAudio className="size-5" />
         </span>
-        <p className="font-serif text-base">Nenhum áudio gerado. Use o botão MP3 na barra de leitura.</p>
+        <p className="font-serif text-base">{t('Nenhum áudio gerado. Use o botão MP3 na barra de leitura.')}</p>
       </div>
     );
   }
@@ -86,7 +87,7 @@ export default function AudioList() {
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="truncate font-medium">{track.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(track.createdAt).toLocaleString()} · {megabytes(track.size)}
+                  {new Date(track.createdAt).toLocaleString(getLocale())} · {megabytes(track.size)}
                 </span>
               </span>
               {/* The native player: nothing about playback is worth rebuilding. */}
@@ -96,27 +97,27 @@ export default function AudioList() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Baixar ${track.name}`}
+                    aria-label={t('Baixar {name}', { name: track.name })}
                     disabled={!sources[track.id]}
                     onClick={() => download(track)}
                   >
                     <Download />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Baixar</TooltipContent>
+                <TooltipContent>{t('Baixar')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Excluir ${track.name}`}
+                    aria-label={t('Excluir {name}', { name: track.name })}
                     onClick={() => setPendingDelete(track)}
                   >
                     <Trash2 />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Excluir</TooltipContent>
+                <TooltipContent>{t('Excluir')}</TooltipContent>
               </Tooltip>
             </Card>
           </li>
@@ -126,14 +127,16 @@ export default function AudioList() {
       <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Excluir áudio?</DialogTitle>
+            <DialogTitle>{t('Excluir áudio?')}</DialogTitle>
             <DialogDescription>
-              "{pendingDelete?.name}" será removido. O documento continua na biblioteca.
+              {t('"{name}" será removido. O documento continua na biblioteca.', {
+                name: pendingDelete?.name ?? '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingDelete(null)}>
-              Cancelar
+              {t('Cancelar')}
             </Button>
             <Button
               variant="destructive"
@@ -143,7 +146,7 @@ export default function AudioList() {
                 if (track) void deleteAudio(track.id);
               }}
             >
-              Excluir
+              {t('Excluir')}
             </Button>
           </DialogFooter>
         </DialogContent>

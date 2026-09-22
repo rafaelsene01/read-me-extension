@@ -1,5 +1,6 @@
 import { storage } from 'wxt/utils/storage';
 import type { LibraryDocument } from './document';
+import { matchUiLang } from './i18n';
 import type { LocalEngineId } from './tts/types';
 import type { Block, Cursor, Prefs } from './types';
 
@@ -33,6 +34,7 @@ function defaultPrefs(): Prefs {
   return {
     rate: 1.0,
     targetLang: navigator.language,
+    uiLang: matchUiLang(navigator.language),
     ttsEngine: 'system',
     voiceByLang: {},
     voiceByEngine: defaultVoiceByEngine(),

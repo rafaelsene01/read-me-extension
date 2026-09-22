@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { UNTITLED } from '../lib/document';
+import { t } from '../lib/i18n';
 import { segmentBlock } from '../lib/segment';
 import { setBlocks } from '../lib/storage';
 import type { Block } from '../lib/types';
@@ -48,7 +49,7 @@ export function useTextDocument(
           text,
           paragraphs: segmentBlock(text, block.lang, block.id),
         },
-      ]).then((result) => onError(result.ok ? null : 'Armazenamento cheio'));
+      ]).then((result) => onError(result.ok ? null : t('Armazenamento cheio')));
     }, SAVE_AFTER);
 
     return () => clearTimeout(timer);

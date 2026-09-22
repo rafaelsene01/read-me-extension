@@ -1,5 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import type { LibraryDocument } from './document';
+import { t } from './i18n';
 import { segmentBlock } from './segment';
 import type { Block, ParagraphKind } from './types';
 
@@ -150,7 +151,7 @@ export function parseEpub(bytes: Uint8Array, fileName: string, fallbackLang: str
     const text = lines.join('\n');
     blocks.push({
       id,
-      sourceUrl: heading ?? `Capítulo ${blocks.length + 1}`,
+      sourceUrl: heading ?? t('Capítulo {n}', { n: blocks.length + 1 }),
       sourceTitle: title,
       lang,
       text,

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { BookOpenText, CircleAlert, ExternalLink, MousePointerClick, Trash2 } from 'lucide-react';
+import { BookOpenText, CircleAlert, ExternalLink, MousePointerClick, Settings, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { requestAndCapture, type CaptureFailure } from '../lib/capture';
 import { sendCommand, type CaptureMode } from '../lib/messages';
+import { t, type Key } from '../lib/i18n';
 import { clearBlocks } from '../lib/storage';
 
-export const MESSAGES: Record<CaptureFailure, string | null> = {
+/** Keys, translated with t() where they are shown. */
+export const MESSAGES: Record<CaptureFailure, Key | null> = {
   unsupported: 'Não é possível capturar desta página',
   denied: 'Sem acesso a este site',
   inaccessible: 'Conteúdo inacessível nesta região da página',
@@ -18,13 +20,22 @@ export const MESSAGES: Record<CaptureFailure, string | null> = {
   quota: 'Armazenamento cheio',
 };
 
+function openSite(hash: string): void {
+  void chrome.tabs
+    .create({ url: chrome.runtime.getURL(`/documents.html${hash}`) })
+    // The panel is disabled on that page anyway: closing it here
+    // saves the user a second click to tidy up.
+    .then(() => window.close())
+    .catch(() => {});
+}
+
 interface CaptureBarProps {
   empty: boolean;
 }
 
 export default function CaptureBar({ empty }: CaptureBarProps) {
   const [tab, setTab] = useState<{ id: number; url: string | null } | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<Key | null>(null);
 
   useEffect(() => {
     // The active tab is kept in state so the capture handler can call
@@ -92,52 +103,58 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
       <div className="flex gap-2">
         <Button className="flex-1" onClick={() => capture('page')}>
           <BookOpenText />
-          Ler página
+          {t('Ler página')}
         </Button>
         <Button variant="outline" className="flex-1" onClick={() => capture('picker')}>
           <MousePointerClick />
-          Escolher elemento
+          {t('Escolher elemento')}
         </Button>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="outline"
               size="icon"
-              aria-label="Abrir o site da extensão"
-              onClick={() =>
-                void chrome.tabs
-                  .create({ url: chrome.runtime.getURL('/documents.html') })
-                  // The panel is disabled on that page anyway: closing it here
-                  // saves the user a second click to tidy up.
-                  .then(() => window.close())
-                  .catch(() => {})
-              }
+              aria-label={t('Abrir o site da extensão')}
+              onClick={() => openSite('')}
             >
               <ExternalLink />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Abrir o site da extensão</TooltipContent>
+          <TooltipContent>{t('Abrir o site da extensão')}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={t('Configurações')}
+              onClick={() => openSite('#settings')}
+            >
+              <Settings />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t('Configurações')}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Limpar"
+              aria-label={t('Limpar')}
               disabled={empty}
               onClick={() => void clear()}
             >
               <Trash2 />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Limpar</TooltipContent>
+          <TooltipContent>{t('Limpar')}</TooltipContent>
         </Tooltip>
       </div>
 
       {message && (
         <Alert variant="destructive">
           <CircleAlert />
-          <AlertDescription>{message}</AlertDescription>
+          <AlertDescription>{t(message)}</AlertDescription>
         </Alert>
       )}
     </section>

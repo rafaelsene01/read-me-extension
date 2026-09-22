@@ -2,6 +2,7 @@ import { getDocument, GlobalWorkerOptions, Util, type PDFDocumentProxy } from 'p
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { LibraryDocument } from './document';
 import { groupParagraphs, type PdfParagraph, type TextPiece } from './pdf-text';
+import { t } from './i18n';
 import { segmentBlock } from './segment';
 import type { Block, ParagraphKind } from './types';
 
@@ -106,7 +107,7 @@ export async function parsePdf(
       const text = paragraphs.map((paragraph) => paragraph.text).join('\n');
       blocks.push({
         id,
-        sourceUrl: `Página ${pageNumber}`,
+        sourceUrl: t('Página {n}', { n: pageNumber }),
         sourceTitle: title,
         lang: fallbackLang,
         text,

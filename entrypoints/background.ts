@@ -1,5 +1,6 @@
 import { captureTab, isCapturable } from '../lib/capture';
 import { createEngine, type Engine } from '../lib/engine';
+import { setLocale, t } from '../lib/i18n';
 import { broadcastState, isReaderPage, onCommand } from '../lib/messages';
 import * as store from '../lib/storage';
 import { requestTranslation } from '../lib/translate';
@@ -31,10 +32,11 @@ export default defineBackground(() => {
   }
 
   // Right-click on a selection sends it to the reader.
-  chrome.runtime.onInstalled.addListener(() => {
+  chrome.runtime.onInstalled.addListener(async () => {
+    setLocale((await store.getPrefs()).uiLang);
     chrome.contextMenus.create({
       id: 'capture-selection',
-      title: 'Enviar para ReadMe',
+      title: t('Enviar para ReadMe'),
       contexts: ['selection'],
     });
   });
@@ -156,6 +158,13 @@ export default defineBackground(() => {
   // A removed or edited block can leave the cursor dangling.
   chrome.storage.local.onChanged.addListener((changes) => {
     if (changes.blocks) void engine.blocksChanged();
+
+    // The menu title is the only text of the background shown as it is.
+    const uiLang = (changes.prefs?.newValue as Partial<Prefs> | undefined)?.uiLang;
+    if (uiLang && uiLang !== (changes.prefs?.oldValue as Partial<Prefs> | undefined)?.uiLang) {
+      setLocale(uiLang);
+      void chrome.contextMenus.update('capture-selection', { title: t('Enviar para ReadMe') });
+    }
 
     // The selected engine follows the pref instead of one command: picking a
     // voice in the panel switches engine too, and a mirror that only

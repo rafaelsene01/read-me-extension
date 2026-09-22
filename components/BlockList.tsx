@@ -19,6 +19,7 @@ import { languageName } from './Controls';
 import { LANGS } from './TranslatePanel';
 import { applyEdit, applyLang } from '../lib/edit';
 import { sendCommand } from '../lib/messages';
+import { t, tr } from '../lib/i18n';
 import { revealElement } from '../lib/scroll';
 import { removeBlock, setBlocks } from '../lib/storage';
 import { isStale } from '../lib/translate';
@@ -175,7 +176,7 @@ export default function BlockList({
       {error && (
         <Alert variant="destructive">
           <CircleAlert />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{tr(error)}</AlertDescription>
         </Alert>
       )}
       {(visible ? blocks.filter((block) => block.id === visible) : blocks).map((block) => {
@@ -204,12 +205,14 @@ export default function BlockList({
                 >
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SelectTrigger size="sm" aria-label="Idioma do texto" className="h-7 text-xs">
+                      <SelectTrigger size="sm" aria-label={t('Idioma do texto')} className="h-7 text-xs">
                         <Languages />
                         <SelectValue />
                       </SelectTrigger>
                     </TooltipTrigger>
-                    <TooltipContent>Idioma do texto: define a voz da leitura e a origem da tradução</TooltipContent>
+                    <TooltipContent>
+                      {t('Idioma do texto: define a voz da leitura e a origem da tradução')}
+                    </TooltipContent>
                   </Tooltip>
                   <SelectContent>
                     {(LANGS.includes(block.lang) ? LANGS : [block.lang, ...LANGS]).map((lang) => (
@@ -228,7 +231,7 @@ export default function BlockList({
                       <Button
                         variant="secondary"
                         size="icon-sm"
-                        aria-label="Concluir edição"
+                        aria-label={t('Concluir edição')}
                         // Keep focus in the editor so its blur (which saves) runs on click, not before it.
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => (document.activeElement as HTMLElement | null)?.blur()}
@@ -236,7 +239,7 @@ export default function BlockList({
                         <Check />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Concluir edição</TooltipContent>
+                    <TooltipContent>{t('Concluir edição')}</TooltipContent>
                   </Tooltip>
                 ) : (
                   <Tooltip>
@@ -244,14 +247,14 @@ export default function BlockList({
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label="Editar"
+                        aria-label={t('Editar')}
                         disabled={playing}
                         onClick={() => setEditingId(block.id)}
                       >
                         <Pencil />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Editar</TooltipContent>
+                    <TooltipContent>{t('Editar')}</TooltipContent>
                   </Tooltip>
                 ))}
               {/* On the documents page the header closes the whole document instead. */}
@@ -261,13 +264,13 @@ export default function BlockList({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Remover"
+                      aria-label={t('Remover')}
                       onClick={() => void removeBlock(block.id)}
                     >
                       <X />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Remover</TooltipContent>
+                  <TooltipContent>{t('Remover')}</TooltipContent>
                 </Tooltip>
               )}
             </CardHeader>
@@ -279,7 +282,7 @@ export default function BlockList({
                   variant="outline"
                   className="mb-2 border-warning/50 text-warning-foreground"
                 >
-                  Tradução desatualizada
+                  {t('Tradução desatualizada')}
                 </Badge>
               )}
 
@@ -302,7 +305,7 @@ export default function BlockList({
                   {block.text}
                 </div>
               ) : paragraphs === null ? (
-                <p className="text-muted-foreground">Bloco ainda não traduzido.</p>
+                <p className="text-muted-foreground">{t('Bloco ainda não traduzido.')}</p>
               ) : bookView && block.pdf ? (
                 // Falls back to the extracted paragraphs when the file is no longer
                 // stored, and shows the same while pdf.js is being fetched.

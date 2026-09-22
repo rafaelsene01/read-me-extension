@@ -23,26 +23,28 @@ import { parseDocx, type DocxFailure } from "../lib/docx";
 import { parseEpub, type EpubFailure } from "../lib/epub";
 import type { PdfFailure } from "../lib/pdf";
 import { saveDocument } from "../lib/storage";
+import { t, tr, type Key } from "../lib/i18n";
 
-const FILE_MESSAGES: Record<FileFailure, string> = {
+/** Keys, translated with tr() where they are shown. */
+const FILE_MESSAGES: Record<FileFailure, Key> = {
   unsupported: "Formato não suportado",
   empty: "Arquivo vazio",
   tooLarge: "Arquivo grande demais (limite de 500.000 caracteres)",
 };
 
-const EPUB_MESSAGES: Record<EpubFailure, string> = {
+const EPUB_MESSAGES: Record<EpubFailure, Key> = {
   invalid: "EPUB inválido",
   drm: "EPUB protegido por DRM não é suportado",
   empty: "Arquivo vazio",
 };
 
-const DOCX_MESSAGES: Record<DocxFailure, string> = {
+const DOCX_MESSAGES: Record<DocxFailure, Key> = {
   invalid: "DOC inválido",
   legacy: "DOC do Word 97-2003 não é suportado: salve como .docx",
   empty: "Documento sem texto",
 };
 
-const PDF_MESSAGES: Record<PdfFailure, string> = {
+const PDF_MESSAGES: Record<PdfFailure, Key> = {
   invalid: "PDF inválido",
   encrypted: "PDF protegido por senha não é suportado",
   empty: "PDF sem texto: um PDF digitalizado precisa de OCR",
@@ -158,21 +160,21 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
         <DropdownMenuTrigger asChild>
           <Button className="w-full justify-start" disabled={busy} aria-busy={busy}>
             <Plus />
-            Novo
+            {t('Novo')}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
           <DropdownMenuItem onSelect={() => void compose()}>
             <Type />
             <div className="flex flex-1 flex-col gap-0.5 text-left">
-              <span className="font-medium">Texto</span>
-              <span className="text-xs text-muted-foreground">Escreva ou cole</span>
+              <span className="font-medium">{t('Texto')}</span>
+              <span className="text-xs text-muted-foreground">{t('Escreva ou cole')}</span>
             </div>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => input.current?.click()}>
             <FileText />
             <div className="flex flex-1 flex-col gap-0.5 text-left">
-              <span className="font-medium">Documento</span>
+              <span className="font-medium">{t('Documento')}</span>
               <span className="text-xs text-muted-foreground">PDF, EPUB, DOC, TXT, MD</span>
             </div>
           </DropdownMenuItem>
@@ -182,11 +184,11 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
       {error && (
         <Alert variant="destructive">
           <CircleAlert />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{tr(error)}</AlertDescription>
         </Alert>
       )}
       {guard.dialog}
-      <LoadingOverlay open={busy} label="Abrindo documento…" />
+      <LoadingOverlay open={busy} label={t('Abrindo documento…')} />
     </div>
   );
 }

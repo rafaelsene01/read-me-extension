@@ -8,6 +8,7 @@ import {
   Languages,
   Library,
   Save,
+  Settings as SettingsIcon,
   X,
   ZoomIn,
   ZoomOut,
@@ -19,6 +20,7 @@ import { languageName } from '../../components/Controls';
 import LibraryList from '../../components/LibraryList';
 import Mp3Button from '../../components/Mp3Button';
 import NewDocumentMenu from '../../components/NewDocumentMenu';
+import Settings from '../../components/Settings';
 import { useTextDocument } from '../../components/useTextDocument';
 import TranslatePanel, { LANGS } from '../../components/TranslatePanel';
 import { useReader } from '../../components/useReader';
@@ -39,6 +41,7 @@ import { applyLang } from '../../lib/edit';
 import { announceReaderPage, sendCommand } from '../../lib/messages';
 import { clearBlocks, saveDocument, setBlocks, setProgress } from '../../lib/storage';
 import { cn } from '@/lib/utils';
+import { t, tr } from '../../lib/i18n';
 
 /** Font sizes of the text, smallest to largest; index 1 is the side panel's size. */
 const ZOOM = ['text-sm', 'text-[15px]', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl'];
@@ -48,7 +51,10 @@ const SCALE = [0.6, 0.8, 1, 1.25, 1.5, 2, 2.5];
 
 export default function App() {
   const { state, blocks, prefs } = useReader();
-  const [tab, setTab] = useState<'file' | 'library' | 'audio'>('file');
+  // The side panel's gear opens this page on #settings.
+  const [tab, setTab] = useState<'file' | 'library' | 'audio' | 'settings'>(
+    location.hash === '#settings' ? 'settings' : 'file',
+  );
   const [zoom, setZoom] = useState(2);
   // Collapsed by default: the transport line is always there, and what sits
   // under it (the model status, the alerts, the translation panel) is opened
@@ -129,12 +135,13 @@ export default function App() {
   async function setLang(lang: string): Promise<void> {
     setSaveError(null);
     const result = await setBlocks(blocks.map((block) => applyLang(block, lang)));
-    if (!result.ok) setSaveError('Armazenamento cheio');
+    if (!result.ok) setSaveError(t('Armazenamento cheio'));
   }
 
   function zoomButton(step: -1 | 1) {
-    const what = scaled ? 'zoom' : 'fonte';
-    const label = step < 0 ? `Diminuir ${what}` : `Aumentar ${what}`;
+    const label = scaled
+      ? t(step < 0 ? 'Diminuir zoom' : 'Aumentar zoom')
+      : t(step < 0 ? 'Diminuir fonte' : 'Aumentar fonte');
     const next = zoom + step;
     return (
       <Tooltip>
@@ -155,7 +162,7 @@ export default function App() {
   }
 
   function pageButton(step: -1 | 1) {
-    const label = step < 0 ? 'Página anterior' : 'Próxima página';
+    const label = t(step < 0 ? 'Página anterior' : 'Próxima página');
     const next = current + step;
     return (
       <Tooltip>
@@ -193,7 +200,7 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen text-sm">
         <aside className="flex h-screen w-60 shrink-0 flex-col gap-4 border-r bg-muted/40 p-4">
-          <h1 className="px-2 font-serif text-base font-semibold">Documentos</h1>
+          <h1 className="px-2 font-serif text-base font-semibold">{t('Documentos')}</h1>
           <NewDocumentMenu
             onOpened={() => setTab('file')}
             onCompose={() => {
@@ -204,9 +211,10 @@ export default function App() {
           {/* Plain buttons, not Tabs: a vertical Tabs root would stack the nested
               Original/Tradução tabs through its group-data styles. */}
           <nav className="flex flex-col gap-1">
-            {navButton('file', <FileText />, 'Arquivo')}
-            {navButton('library', <Library />, 'Biblioteca')}
-            {navButton('audio', <FileAudio />, 'Áudio')}
+            {navButton('file', <FileText />, t('Arquivo'))}
+            {navButton('library', <Library />, t('Biblioteca'))}
+            {navButton('audio', <FileAudio />, t('Áudio'))}
+            {navButton('settings', <SettingsIcon />, t('Configurações'))}
           </nav>
         </aside>
 
@@ -217,7 +225,7 @@ export default function App() {
             {(state.error ?? saveError) && (
               <Alert variant="destructive">
                 <CircleAlert />
-                <AlertDescription>{state.error ?? saveError}</AlertDescription>
+                <AlertDescription>{state.error ? tr(state.error) : saveError}</AlertDescription>
               </Alert>
             )}
 
@@ -231,8 +239,8 @@ export default function App() {
                       <Input
                         value={typed.title}
                         onChange={(event) => typed.setTitle(event.target.value)}
-                        placeholder="Sem título"
-                        aria-label="Título do documento"
+                        placeholder={t('Sem título')}
+                        aria-label={t('Título do documento')}
                         className="h-auto flex-1 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0 md:text-lg"
                       />
                     ) : (
@@ -256,13 +264,13 @@ export default function App() {
                     >
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <SelectTrigger size="sm" aria-label="Idioma do texto" className="text-xs">
+                          <SelectTrigger size="sm" aria-label={t('Idioma do texto')} className="text-xs">
                             <Languages />
                             <SelectValue />
                           </SelectTrigger>
                         </TooltipTrigger>
                         <TooltipContent>
-                          Idioma do texto: define a voz da leitura e a origem da tradução
+                          {t('Idioma do texto: define a voz da leitura e a origem da tradução')}
                         </TooltipContent>
                       </Tooltip>
                       <SelectContent>
@@ -282,25 +290,25 @@ export default function App() {
                         <Button
                           variant="outline"
                           size="icon-sm"
-                          aria-label="Salvar na biblioteca"
+                          aria-label={t('Salvar na biblioteca')}
                           onClick={() => {
                             setSaveError(null);
                             void saveDocument(toLibraryDocument(blocks)).then((result) => {
-                              if (!result.ok) setSaveError('Armazenamento cheio');
+                              if (!result.ok) setSaveError(t('Armazenamento cheio'));
                             });
                           }}
                         >
                           <Save />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Salvar na biblioteca</TooltipContent>
+                      <TooltipContent>{t('Salvar na biblioteca')}</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label="Fechar documento"
+                          aria-label={t('Fechar documento')}
                           onClick={() => {
                             void sendCommand({ type: 'stop' }).then(() => clearBlocks());
                           }}
@@ -308,7 +316,7 @@ export default function App() {
                           <X />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Fechar documento</TooltipContent>
+                      <TooltipContent>{t('Fechar documento')}</TooltipContent>
                     </Tooltip>
                   </header>
                 )}
@@ -317,14 +325,14 @@ export default function App() {
                     <span className="grid size-11 place-items-center rounded-full bg-accent text-accent-foreground">
                       <FileText className="size-5" />
                     </span>
-                    <p className="font-serif text-base">Importe um documento para começar.</p>
+                    <p className="font-serif text-base">{t('Importe um documento para começar.')}</p>
                   </div>
                 ) : composing ? (
                   <Textarea
                     value={typed.text}
                     onChange={(event) => typed.setText(event.target.value)}
-                    placeholder="Escreva ou cole o texto aqui."
-                    aria-label="Conteúdo do documento"
+                    placeholder={t('Escreva ou cole o texto aqui.')}
+                    aria-label={t('Conteúdo do documento')}
                     className="min-h-0 flex-1 resize-none leading-relaxed"
                   />
                 ) : (
@@ -349,15 +357,22 @@ export default function App() {
 
             {tab === 'audio' && (
               <section className="-mx-1 flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto px-1">
-                <h2 className="text-lg font-semibold">Áudio</h2>
+                <h2 className="text-lg font-semibold">{t('Áudio')}</h2>
                 <AudioList />
               </section>
             )}
 
             {tab === 'library' && (
               <section className="-mx-1 flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto px-1">
-                <h2 className="text-lg font-semibold">Biblioteca</h2>
+                <h2 className="text-lg font-semibold">{t('Biblioteca')}</h2>
                 <LibraryList onOpened={() => setTab('file')} />
+              </section>
+            )}
+
+            {tab === 'settings' && prefs && (
+              <section className="flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto">
+                <h2 className="text-lg font-semibold">{t('Configurações')}</h2>
+                <Settings prefs={prefs} />
               </section>
             )}
           </main>
