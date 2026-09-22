@@ -9,6 +9,7 @@ import {
   getBlocks,
   getCursor,
   getZoom,
+  getDocumentBlocks,
   getDocuments,
   getFolders,
   getPrefs,
@@ -18,6 +19,7 @@ import {
   saveDocument,
   setBlocks,
   setCursor,
+  setProgress,
   setZoom,
   setPrefs,
   touchDocument,
@@ -130,7 +132,7 @@ describe('setBlocks', () => {
     await setBlocks([{ ...block('a', 'primeiro'), lang: 'de' }]);
 
     // Reopening the document must not have to work the language out again.
-    expect((await getDocuments())[0]?.blocks[0]?.lang).toBe('de');
+    expect((await getDocumentBlocks('a'))[0]?.lang).toBe('de');
   });
 
   it('keeps savedAt, so following the buffer does not reorder the library', async () => {
@@ -276,7 +278,8 @@ describe('library documents', () => {
     const result = await saveDocument(toLibraryDocument(blocks, 100));
 
     expect(result).toEqual({ ok: true });
-    expect(await getDocuments()).toEqual([{ id: 'a', name: 'a', blocks, savedAt: 100 }]);
+    expect(await getDocuments()).toEqual([{ id: 'a', name: 'a', kind: 'Texto', savedAt: 100 }]);
+    expect(await getDocumentBlocks('a')).toEqual(blocks);
   });
 
   it('updates the document with the same id instead of adding another', async () => {
@@ -287,7 +290,7 @@ describe('library documents', () => {
     const docs = await getDocuments();
     expect(docs).toHaveLength(1);
     expect(docs[0]!.savedAt).toBe(200);
-    expect(docs[0]!.blocks.map((b) => b.id)).toEqual(['a', 'b']);
+    expect((await getDocumentBlocks('a')).map((b) => b.id)).toEqual(['a', 'b']);
   });
 
   it('lists documents from the most recent to the oldest', async () => {
@@ -323,7 +326,7 @@ describe('library documents', () => {
 
     await saveDocument(toLibraryDocument(blocks, 100));
 
-    expect((await getDocuments())[0]).toEqual({ id: 'a', name: 'a', blocks, savedAt: 100 });
+    expect((await getDocuments())[0]).toEqual({ id: 'a', name: 'a', kind: 'Texto', savedAt: 100 });
   });
 
   it('returns reason "quota" and keeps the previous library when the write fails', async () => {
@@ -348,6 +351,20 @@ describe('library documents', () => {
 
     expect(result).toEqual({ ok: true });
     expect((await getDocuments()).map((d) => d.id)).toEqual(['c', 'a']);
+    expect(await fakeBrowser.storage.local.get('doc:b')).toEqual({});
+  });
+
+  it('moves a library stored the old way, blocks and all, into one key per document', async () => {
+    const blocks = [block('a', 'um'), block('b', 'dois')];
+    await fakeBrowser.storage.local.set({
+      documents: [{ id: 'a', name: 'a', blocks, folder: 'Estudos', savedAt: 100 }],
+    });
+
+    expect(await getDocuments()).toEqual([
+      { id: 'a', name: 'a', kind: 'Texto', folder: 'Estudos', savedAt: 100 },
+    ]);
+    expect(await getDocumentBlocks('a')).toEqual(blocks);
+    expect(await fakeBrowser.storage.local.get('documents')).toEqual({});
   });
 
   it('keeps the library and reports success when the id is not stored', async () => {
@@ -461,6 +478,13 @@ describe('reading progress', () => {
 
     expect(await getCursor()).toBeNull();
     expect(await getProgress('a')).toEqual(at('a'));
+  });
+
+  it('keeps both of two progress writes in flight at once', async () => {
+    await Promise.all([setProgress('a', at('a')), setProgress('b', at('b'))]);
+
+    expect(await getProgress('a')).toEqual(at('a'));
+    expect(await getProgress('b')).toEqual(at('b'));
   });
 
   it('has no progress for a document that was never read', async () => {

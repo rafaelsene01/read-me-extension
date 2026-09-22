@@ -1,5 +1,5 @@
-import { storage } from 'wxt/utils/storage';
-import type { LibraryDocument } from './document';
+import { storage, type WxtStorageItem } from 'wxt/utils/storage';
+import { documentKind, type LibraryDocument } from './document';
 import { DEFAULT_UI_LANG } from './i18n';
 import type { LocalEngineId } from './tts/types';
 import type { Block, Cursor, Prefs } from './types';
@@ -42,7 +42,31 @@ const cursorItems = {
   panel: storage.defineItem<Cursor | null>('local:panelCursor', { fallback: null }),
 };
 const prefsItem = storage.defineItem<Partial<Prefs>>('local:prefs', { fallback: {} });
-const documentsItem = storage.defineItem<LibraryDocument[]>('local:documents', { fallback: [] });
+/** The library's entries; the blocks of each document are under blocksOf(id). */
+const libraryItem = storage.defineItem<LibraryEntry[]>('local:library', { fallback: [] });
+
+function blocksOf(id: string) {
+  return storage.defineItem<Block[]>(`local:doc:${id}`, { fallback: [] });
+}
+
+const queues = new Map<string, Promise<unknown>>();
+
+/**
+ * Read-modify-write of one key, run one after the other: two updates in flight
+ * never write over each other. A failed write rejects its caller and lets the
+ * next one run.
+ *
+ * ponytail: serial within one context only (page, panel and background each
+ * have their own queue); writes to the same key from two contexts can still
+ * interleave. Route the writes through the background if that ever loses data.
+ */
+function update<T>(item: WxtStorageItem<T, Record<string, unknown>>, change: (value: T) => T): Promise<void> {
+  const run = (queues.get(item.key) ?? Promise.resolve())
+    .catch(() => {})
+    .then(async () => item.setValue(change(await item.getValue())));
+  queues.set(item.key, run);
+  return run;
+}
 /** Folder names of the library; a folder exists even while it holds nothing. */
 const foldersItem = storage.defineItem<string[]>('local:folders', { fallback: [] });
 /** Where the reading of each document stopped, by document id. */
@@ -91,8 +115,7 @@ export async function setBlocks(blocks: Block[], scope: Scope = SCOPE): Promise<
   }
 
   const id = blocks[0]?.id;
-  const docs = await documentsItem.getValue();
-  const stored = id ? docs.find((doc) => doc.id === id) : undefined;
+  const stored = id ? (await library()).find((entry) => entry.id === id) : undefined;
   // savedAt is kept: following the buffer is not the user saving the document,
   // and it must not jump to the top of the library on every edit.
   if (stored) await saveDocument({ ...stored, name: blocks[0]!.sourceTitle, blocks, savedAt: stored.savedAt });
@@ -116,9 +139,55 @@ export function clearBlocks(): Promise<SetResult> {
   return setBlocks([]);
 }
 
+/**
+ * What the library lists of a document: everything but its blocks, which live
+ * under a key of their own. Listing the library, or filing a document in a
+ * folder, never reads or rewrites the text of every book.
+ */
+export type LibraryEntry = Omit<LibraryDocument, 'blocks'> & {
+  /** documentKind of the document, kept here because it is read off the blocks. */
+  kind: string;
+};
+
+function toEntry({ blocks, ...doc }: LibraryDocument): LibraryEntry {
+  return { ...doc, kind: documentKind(blocks[0]) };
+}
+
+/**
+ * The library as it was stored before each document got its own key: one
+ * array holding every document, blocks and all. Moved out on first read.
+ */
+const legacyItem = storage.defineItem<LibraryDocument[]>('local:documents', { fallback: [] });
+
+async function migrate(): Promise<void> {
+  const legacy = await legacyItem.getValue();
+  if (legacy.length === 0) return;
+  // Blocks first: an entry never points at text that is not there. Running
+  // twice (the page and the background at once) writes the same thing twice.
+  for (const doc of legacy) await blocksOf(doc.id).setValue(doc.blocks);
+  await update(libraryItem, (entries) => [
+    ...entries.filter((entry) => !legacy.some((doc) => doc.id === entry.id)),
+    ...legacy.map(toEntry),
+  ]);
+  await legacyItem.removeValue();
+}
+
+/** The stored entries, in no order. */
+async function library(): Promise<LibraryEntry[]> {
+  // A migration that fails (quota) leaves the old array in place for the next read.
+  await migrate().catch(() => {});
+  return libraryItem.getValue();
+}
+
 /** Most recently saved first. */
-export async function getDocuments(): Promise<LibraryDocument[]> {
-  return (await documentsItem.getValue()).sort((a, b) => b.savedAt - a.savedAt);
+export async function getDocuments(): Promise<LibraryEntry[]> {
+  return (await library()).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/** The blocks of a library document; empty when it is not stored. */
+export async function getDocumentBlocks(id: string): Promise<Block[]> {
+  await migrate().catch(() => {});
+  return blocksOf(id).getValue();
 }
 
 /**
@@ -127,17 +196,22 @@ export async function getDocuments(): Promise<LibraryDocument[]> {
  * the buffer again must not send a filed document back to the top level.
  */
 export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
-  const docs = await documentsItem.getValue();
-  const existing = docs.find((d) => d.id === doc.id);
-  const saved = {
-    ...doc,
-    cover: doc.cover ?? existing?.cover,
-    folder: doc.folder ?? existing?.folder,
-  };
+  const existed = (await library()).some((entry) => entry.id === doc.id);
   try {
-    await documentsItem.setValue([...docs.filter((d) => d.id !== doc.id), saved]);
+    await blocksOf(doc.id).setValue(doc.blocks);
+    await update(libraryItem, (entries) => {
+      const existing = entries.find((entry) => entry.id === doc.id);
+      const saved = toEntry({
+        ...doc,
+        cover: doc.cover ?? existing?.cover,
+        folder: doc.folder ?? existing?.folder,
+      });
+      return [...entries.filter((entry) => entry.id !== doc.id), saved];
+    });
   } catch {
-    // Quota error: nothing was written, so the previous library still stands.
+    // Quota error: the library still lists what it did. Text written for a
+    // document it never listed would only take room, so it goes.
+    if (!existed) await blocksOf(doc.id).removeValue().catch(() => {});
     return { ok: false, reason: 'quota' };
   }
   return { ok: true };
@@ -148,11 +222,10 @@ export async function saveDocument(doc: LibraryDocument): Promise<SetResult> {
  * one being read goes to the top; an id that is not stored changes nothing.
  */
 export async function touchDocument(id: string): Promise<void> {
-  const docs = await documentsItem.getValue();
-  if (!docs.some((doc) => doc.id === id)) return;
+  if (!(await library()).some((entry) => entry.id === id)) return;
   try {
-    await documentsItem.setValue(
-      docs.map((doc) => (doc.id === id ? { ...doc, savedAt: Date.now() } : doc)),
+    await update(libraryItem, (entries) =>
+      entries.map((entry) => (entry.id === id ? { ...entry, savedAt: Date.now() } : entry)),
     );
   } catch {
     // Quota: the order of the library is a nicety, never worth failing an open.
@@ -161,17 +234,18 @@ export async function touchDocument(id: string): Promise<void> {
 
 /** Removing an id that is not stored is not an error. */
 export async function deleteDocument(id: string): Promise<SetResult> {
-  const docs = await documentsItem.getValue();
-  const { [id]: _gone, ...progress } = await progressItem.getValue();
-  const { [id]: _zoom, ...zoom } = await zoomItem.getValue();
+  await library();
   try {
-    await documentsItem.setValue(docs.filter((d) => d.id !== id));
-    await progressItem.setValue(progress);
-    await zoomItem.setValue(zoom);
+    // The entry goes first: once the library stops listing it, the rest is
+    // only room being freed.
+    await update(libraryItem, (entries) => entries.filter((entry) => entry.id !== id));
+    await update(progressItem, ({ [id]: _gone, ...progress }) => progress);
+    await update(zoomItem, ({ [id]: _gone, ...zoom }) => zoom);
   } catch {
     // Quota error: nothing was written, so the previous library still stands.
     return { ok: false, reason: 'quota' };
   }
+  await blocksOf(id).removeValue();
   return { ok: true };
 }
 
@@ -183,12 +257,13 @@ export async function getFolders(): Promise<string[]> {
 /** Adds a folder; a blank name, or one already taken, changes nothing. */
 export async function createFolder(name: string): Promise<SetResult> {
   const folder = name.trim();
-  const folders = await foldersItem.getValue();
-  if (!folder || folders.some((other) => other.toLowerCase() === folder.toLowerCase())) {
-    return { ok: true };
-  }
+  if (!folder) return { ok: true };
   try {
-    await foldersItem.setValue([...folders, folder]);
+    await update(foldersItem, (folders) =>
+      folders.some((other) => other.toLowerCase() === folder.toLowerCase())
+        ? folders
+        : [...folders, folder],
+    );
   } catch {
     return { ok: false, reason: 'quota' };
   }
@@ -197,11 +272,11 @@ export async function createFolder(name: string): Promise<SetResult> {
 
 /** Removes a folder; the documents it held go back to the top level, never away. */
 export async function deleteFolder(name: string): Promise<SetResult> {
-  const docs = await documentsItem.getValue();
+  await library();
   try {
-    await foldersItem.setValue((await foldersItem.getValue()).filter((other) => other !== name));
-    await documentsItem.setValue(
-      docs.map((doc) => (doc.folder === name ? { ...doc, folder: undefined } : doc)),
+    await update(foldersItem, (folders) => folders.filter((other) => other !== name));
+    await update(libraryItem, (entries) =>
+      entries.map((entry) => (entry.folder === name ? { ...entry, folder: undefined } : entry)),
     );
   } catch {
     return { ok: false, reason: 'quota' };
@@ -211,10 +286,10 @@ export async function deleteFolder(name: string): Promise<SetResult> {
 
 /** Files a document under `folder`, or back at the top level with null. */
 export async function moveDocument(id: string, folder: string | null): Promise<SetResult> {
-  const docs = await documentsItem.getValue();
+  await library();
   try {
-    await documentsItem.setValue(
-      docs.map((doc) => (doc.id === id ? { ...doc, folder: folder ?? undefined } : doc)),
+    await update(libraryItem, (entries) =>
+      entries.map((entry) => (entry.id === id ? { ...entry, folder: folder ?? undefined } : entry)),
     );
   } catch {
     return { ok: false, reason: 'quota' };
@@ -236,7 +311,7 @@ export async function getPrefs(): Promise<Prefs> {
 }
 
 export async function setPrefs(patch: Partial<Prefs>): Promise<void> {
-  await prefsItem.setValue({ ...(await prefsItem.getValue()), ...patch });
+  await update(prefsItem, (prefs) => ({ ...prefs, ...patch }));
 }
 
 /**
@@ -245,8 +320,11 @@ export async function setPrefs(patch: Partial<Prefs>): Promise<void> {
  * starts, not per sentence: a write per sentence would buy nothing.
  */
 export async function touchModel(engine: LocalEngineId): Promise<void> {
-  const prefs = await getPrefs();
-  await setPrefs({ modelUsedAt: { ...prefs.modelUsedAt, [engine]: Date.now() } });
+  // Inside the update: a read taken before it could drop another engine's time.
+  await update(prefsItem, (prefs) => ({
+    ...prefs,
+    modelUsedAt: { ...prefs.modelUsedAt, [engine]: Date.now() },
+  }));
 }
 
 export function getCursor(scope: Scope = SCOPE): Promise<Cursor | null> {
@@ -279,7 +357,7 @@ export async function getZoom(id: string): Promise<number | null> {
 }
 
 export async function setZoom(id: string, zoom: number): Promise<void> {
-  await zoomItem.setValue({ ...(await zoomItem.getValue()), [id]: zoom });
+  await update(zoomItem, (all) => ({ ...all, [id]: zoom }));
 }
 
 /** Where `id` was left, or null when it was never read. */
@@ -293,5 +371,5 @@ export async function getProgress(id: string): Promise<Cursor | null> {
  * sentence in the air.
  */
 export async function setProgress(id: string, cursor: Cursor): Promise<void> {
-  await progressItem.setValue({ ...(await progressItem.getValue()), [id]: cursor });
+  await update(progressItem, (all) => ({ ...all, [id]: cursor }));
 }

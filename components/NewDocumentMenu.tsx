@@ -187,7 +187,6 @@ export default function NewDocumentMenu({ onOpened, onCompose }: NewDocumentMenu
           <AlertDescription>{tr(error)}</AlertDescription>
         </Alert>
       )}
-      {guard.dialog}
       <LoadingOverlay open={busy} label={t('Abrindo documento…')} />
     </div>
   );

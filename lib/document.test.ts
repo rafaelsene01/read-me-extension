@@ -3,7 +3,6 @@ import { documentKind, fileToBlock, readingTime, toLibraryDocument } from './doc
 import { stripMarkdown } from './markdown';
 import { segmentBlock } from './segment';
 import type { Block } from './types';
-import type { LibraryDocument } from './document';
 
 function ok(result: ReturnType<typeof fileToBlock>) {
   if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
@@ -95,8 +94,10 @@ describe('readingTime', () => {
 });
 
 describe('documentKind', () => {
-  const doc = (block: Partial<Block>): LibraryDocument =>
-    toLibraryDocument([{ ...ok(fileToBlock('a.txt', 'Texto.', 'pt-BR')), ...block }]);
+  const doc = (block: Partial<Block>): Block => ({
+    ...ok(fileToBlock('a.txt', 'Texto.', 'pt-BR')),
+    ...block,
+  });
 
   it('names the format of an imported file', () => {
     expect(documentKind(doc({ pdf: { book: 'b', page: 1 } }))).toBe('PDF');

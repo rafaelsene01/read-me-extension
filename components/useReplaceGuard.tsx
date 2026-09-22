@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { MESSAGES } from './CaptureBar';
 import { toLibraryDocument } from '../lib/document';
 import { getBlocks, saveDocument, setBlocks, touchDocument } from '../lib/storage';
@@ -10,15 +10,11 @@ import type { Block } from '../lib/types';
  * because nothing is lost — a document that came from the library is already
  * kept up to date by setBlocks, and a buffer that never was one is saved here
  * before it is replaced. Callers show `error` (quota) in an Alert.
- *
- * `dialog` is gone; it stays in the return shape only so the callers that
- * render it keep working.
  */
 export function useReplaceGuard(): {
   open: (blocks: Block[], onOpened?: () => void) => Promise<void>;
   /** True while a document is being filed and put in the buffer: show it. */
   opening: boolean;
-  dialog: ReactNode;
   error: string | null;
 } {
   const [error, setError] = useState<string | null>(null);
@@ -56,5 +52,5 @@ export function useReplaceGuard(): {
     }
   }
 
-  return { open, opening, dialog: null, error };
+  return { open, opening, error };
 }

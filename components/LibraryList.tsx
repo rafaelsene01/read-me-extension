@@ -46,17 +46,18 @@ import { cn } from '@/lib/utils';
 import LoadingOverlay, { LoadingMark } from './LoadingOverlay';
 import { useReplaceGuard } from './useReplaceGuard';
 import { deleteBook } from '../lib/book-assets';
-import { documentKind, type LibraryDocument } from '../lib/document';
 import { getLocale, t, tr, trName } from '../lib/i18n';
 import {
   createFolder,
   deleteDocument,
   deleteFolder,
+  getDocumentBlocks,
   getDocuments,
   getFolders,
   getPrefs,
   moveDocument,
   setPrefs,
+  type LibraryEntry,
 } from '../lib/storage';
 
 interface LibraryListProps {
@@ -68,7 +69,7 @@ interface LibraryListProps {
 const ANY = 'todos';
 
 export default function LibraryList({ onOpened }: LibraryListProps) {
-  const [docs, setDocs] = useState<LibraryDocument[]>([]);
+  const [docs, setDocs] = useState<LibraryEntry[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [search, setSearch] = useState('');
@@ -78,12 +79,18 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   /** The name being typed; null while the dialog is closed. */
   const [newFolder, setNewFolder] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<LibraryDocument | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<LibraryEntry | null>(null);
   const [pendingFolderDelete, setPendingFolderDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** The library is read from storage: until it answers, it is not "empty". */
   const [loading, setLoading] = useState(true);
   const guard = useReplaceGuard();
+
+  /** The list holds no text: the blocks are read only for the document opened. */
+  async function open(doc: LibraryEntry): Promise<void> {
+    const blocks = await getDocumentBlocks(doc.id);
+    if (blocks.length > 0) await guard.open(blocks, onOpened);
+  }
 
   // The last view picked is the one the library opens in.
   useEffect(() => {
@@ -101,7 +108,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     // keys: reading writes the cursor once per sentence, and reloading every
     // book on each of those writes slowed the page while it read.
     const onChanged = (changes: Record<string, unknown>): void => {
-      if (changes.documents || changes.folders) load();
+      if (changes.library || changes.folders) load();
     };
     chrome.storage.local.onChanged.addListener(onChanged);
     return () => chrome.storage.local.onChanged.removeListener(onChanged);
@@ -113,14 +120,14 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
   }, [folders, folder]);
 
   const kinds = useMemo(
-    () => [...new Set(docs.map(documentKind))].sort((a, b) => a.localeCompare(b)),
+    () => [...new Set(docs.map((doc) => doc.kind))].sort((a, b) => a.localeCompare(b)),
     [docs],
   );
 
   const shown = docs.filter(
     (doc) =>
       (doc.folder ?? null) === folder &&
-      (kind === ANY || documentKind(doc) === kind) &&
+      (kind === ANY || doc.kind === kind) &&
       trName(doc.name).toLowerCase().includes(search.trim().toLowerCase()),
   );
 
@@ -144,7 +151,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     await deleteBook(doc.id);
   }
 
-  function documentMenu(doc: LibraryDocument) {
+  function documentMenu(doc: LibraryEntry) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -183,7 +190,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     );
   }
 
-  function cover(doc: LibraryDocument, className: string) {
+  function cover(doc: LibraryEntry, className: string) {
     return doc.cover ? (
       <img src={doc.cover} alt="" className={cn('shrink-0 object-cover', className)} />
     ) : (
@@ -199,7 +206,7 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
   }
 
   /** What makes a card a drag source, in both views. */
-  function dragProps(doc: LibraryDocument) {
+  function dragProps(doc: LibraryEntry) {
     return {
       draggable: true,
       onDragStart: (event: DragEvent) => {
@@ -390,14 +397,14 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 <button
                   type="button"
                   className="flex w-full cursor-pointer flex-col text-left transition-colors hover:bg-accent"
-                  onClick={() => void guard.open(doc.blocks, onOpened)}
+                  onClick={() => void open(doc)}
                 >
                   {cover(doc, 'h-40 w-full')}
                   <span className="flex flex-col gap-1 p-3">
                     <span className="truncate font-serif text-sm font-medium">{trName(doc.name)}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
-                        {tr(documentKind(doc))}
+                        {tr(doc.kind)}
                       </Badge>
                       <span className="truncate text-xs text-muted-foreground">
                         {new Date(doc.savedAt).toLocaleDateString(getLocale())}
@@ -420,14 +427,14 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                 <Button
                   variant="ghost"
                   className="h-auto min-w-0 flex-1 flex-row items-center gap-3 rounded-none px-4 py-2 text-left"
-                  onClick={() => void guard.open(doc.blocks, onOpened)}
+                  onClick={() => void open(doc)}
                 >
                   {cover(doc, 'h-16 w-12 rounded-sm')}
                   <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
                     <span className="w-full truncate font-serif font-medium">{trName(doc.name)}</span>
                     <span className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-normal">
-                        {tr(documentKind(doc))}
+                        {tr(doc.kind)}
                       </Badge>
                       <span className="text-xs font-normal text-muted-foreground">
                         {new Date(doc.savedAt).toLocaleString(getLocale())}
@@ -441,8 +448,6 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
           </ul>
         </Card>
       )}
-
-      {guard.dialog}
 
       <Dialog open={newFolder !== null} onOpenChange={(open) => !open && setNewFolder(null)}>
         <DialogContent>

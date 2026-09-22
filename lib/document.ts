@@ -52,8 +52,7 @@ export function fileToBlock(name: string, raw: string, lang: string): FileResult
  * What the document was made from, for the library card: the format of an
  * imported file, or "Texto" for a captured page, which has no file behind it.
  */
-export function documentKind(doc: LibraryDocument): string {
-  const block = doc.blocks[0];
+export function documentKind(block: Block | undefined): string {
   if (block?.pdf) return 'PDF';
   if (block?.epub) return 'EPUB';
   const ext = block?.sourceTitle.match(/\.(txt|md|docx?)$/i)?.[1]?.toUpperCase();

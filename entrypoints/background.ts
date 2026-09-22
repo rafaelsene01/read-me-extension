@@ -171,7 +171,7 @@ export default defineBackground(() => {
         void localClient.prepare(command.engine);
         break;
       default:
-        // 'capture' is wired in T12; 'state' only needs the reply below.
+        // 'capture' goes to the content script, not here; 'state' only needs the reply below.
         break;
     }
 
