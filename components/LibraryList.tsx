@@ -194,13 +194,16 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
     return doc.cover ? (
       <img src={doc.cover} alt="" className={cn('shrink-0 object-cover', className)} />
     ) : (
+      // No cover: the first letter of the name, set like a book's, so documents
+      // tell apart at a glance instead of all showing the same icon.
       <span
+        aria-hidden
         className={cn(
-          'flex shrink-0 items-center justify-center bg-muted text-muted-foreground',
+          'flex shrink-0 items-center justify-center bg-accent font-serif text-3xl font-semibold text-accent-foreground',
           className,
         )}
       >
-        <FileText className="size-6" />
+        {trName(doc.name).trim().charAt(0).toUpperCase() || <FileText className="size-6" />}
       </span>
     );
   }
@@ -437,7 +440,10 @@ export default function LibraryList({ onOpened }: LibraryListProps) {
                         {tr(doc.kind)}
                       </Badge>
                       <span className="text-xs font-normal text-muted-foreground">
-                        {new Date(doc.savedAt).toLocaleString(getLocale())}
+                        {new Date(doc.savedAt).toLocaleString(getLocale(), {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
                       </span>
                     </span>
                   </span>

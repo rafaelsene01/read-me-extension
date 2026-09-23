@@ -57,6 +57,18 @@ function paragraphsFor(block: Block, activeTab: Prefs['activeTab']): Paragraph[]
   return block.translation?.paragraphs ?? null;
 }
 
+/**
+ * Where a block came from, short enough for its header: the site of a captured
+ * page, or the name the app gave a document that never had a URL.
+ */
+function sourceLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return trName(url);
+  }
+}
+
 /** Tag for a paragraph: headings keep their level, everything else renders as <p>. */
 function kindTag(kind: ParagraphKind): 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' {
   return kind === 'quote' || kind === 'li' ? 'p' : kind;
@@ -97,6 +109,8 @@ export default function BlockList({
   const activeRef = useRef<HTMLSpanElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Set by the cancel button, so the blur that follows discards instead of saving. */
+  const cancelled = useRef(false);
 
   async function save(next: Block[]): Promise<void> {
     const result = await setBlocks(next);
@@ -135,7 +149,10 @@ export default function BlockList({
               block.id === cursor?.blockId &&
               paraIndex === cursor.paraIndex &&
               sentIndex === cursor.sentIndex;
-            return (
+            // The space between sentences stays outside the span, so the
+            // highlight hugs the sentence and the gap is a single space.
+            return [
+              sentIndex > 0 && ' ',
               <span
                 key={sentence.id}
                 ref={active ? activeRef : null}
@@ -147,15 +164,15 @@ export default function BlockList({
                 }
                 onDoubleClick={() => void playAt({ blockId: block.id, paraIndex, sentIndex })}
                 className={cn(
-                  'scroll-mt-2 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors duration-200',
+                  'scroll-mt-2 -mx-0.5 cursor-pointer rounded px-0.5 box-decoration-clone transition-colors duration-200',
                   active
                     ? 'bg-highlight text-highlight-foreground'
                     : 'hover:bg-highlight/40',
                 )}
               >
-                {sentence.text}{' '}
-              </span>
-            );
+                {sentence.text}
+              </span>,
+            ];
           })}
         </Tag>
       );
@@ -172,6 +189,11 @@ export default function BlockList({
     if (activeRef.current) revealElement(activeRef.current);
   }, [activeKey, activeTab]);
 
+  const shown = visible ? blocks.filter((block) => block.id === visible) : blocks;
+  // Nothing on the translation tab yet: one notice, not one per block.
+  const untranslated =
+    activeTab === 'translation' && shown.every((block) => paragraphsFor(block, activeTab) === null);
+
   return (
     <div className="flex flex-col gap-3">
       {error && (
@@ -180,7 +202,11 @@ export default function BlockList({
           <AlertDescription>{tr(error)}</AlertDescription>
         </Alert>
       )}
-      {(visible ? blocks.filter((block) => block.id === visible) : blocks).map((block) => {
+      {untranslated ? (
+        <p className="rounded-xl border border-dashed p-6 text-center text-muted-foreground">
+          {t('Texto ainda não traduzido.')}
+        </p>
+      ) : shown.map((block) => {
         const paragraphs = paragraphsFor(block, activeTab);
         // A page of a paged document has nothing left to put in the card header,
         // so the card holds only the content and needs no gap either:
@@ -194,11 +220,12 @@ export default function BlockList({
                 title={trName(block.sourceUrl)}
                 className="flex-1 truncate text-xs text-muted-foreground"
               >
-                {trName(block.sourceUrl)}
+                {sourceLabel(block.sourceUrl)}
               </span>
               {/* On the documents page the language belongs to the whole document and
                   lives in its header, next to the page navigation. */}
-              {!bookView && (
+              {/* The source language is the original's business, not the translation's. */}
+              {!bookView && activeTab === 'original' && (
                 <Select
                   value={block.lang}
                   disabled={playing}
@@ -208,7 +235,9 @@ export default function BlockList({
                     <TooltipTrigger asChild>
                       <SelectTrigger size="sm" aria-label={t('Idioma do texto')} className="h-7 text-xs">
                         <Languages />
-                        <SelectValue />
+                        {/* The code only: the full name is in the list, and the
+                            header stays with room for where the text came from. */}
+                        <SelectValue>{block.lang.toUpperCase()}</SelectValue>
                       </SelectTrigger>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -227,21 +256,35 @@ export default function BlockList({
               {activeTab === 'original' &&
                 !block.kinds &&
                 (editingId === block.id ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="icon-sm"
-                        aria-label={t('Concluir edição')}
-                        // Keep focus in the editor so its blur (which saves) runs on click, not before it.
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => (document.activeElement as HTMLElement | null)?.blur()}
-                      >
-                        <Check />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t('Concluir edição')}</TooltipContent>
-                  </Tooltip>
+                    <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        cancelled.current = true;
+                        (document.activeElement as HTMLElement | null)?.blur();
+                      }}
+                    >
+                      {t('Cancelar')}
+                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="icon-sm"
+                          aria-label={t('Concluir edição')}
+                          // Keep focus in the editor so its blur (which saves) runs on click, not before it.
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => (document.activeElement as HTMLElement | null)?.blur()}
+                        >
+                          <Check />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t('Concluir edição')}</TooltipContent>
+                    </Tooltip>
+                    </>
                 ) : (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -299,6 +342,10 @@ export default function BlockList({
                   onBlur={(event) => {
                     const text = event.currentTarget.innerText;
                     setEditingId(null);
+                    if (cancelled.current) {
+                      cancelled.current = false;
+                      return;
+                    }
                     void persist(block, text);
                   }}
                   className="rounded-md border border-ring p-2 whitespace-pre-wrap outline-none ring-[3px] ring-ring/30"

@@ -112,6 +112,11 @@ export function isStale(block: Block): boolean {
  * back, so the translation keeps the original structure paragraph for
  * paragraph. Translating the whole text at once lets the model merge lines.
  *
+ * The lines go one after the other, in order, and `onLines` gets the lines done
+ * so far after each one, so the caller can show the translation growing.
+ * `after` holds the lines back until it resolves (the previous block), so
+ * several blocks fill in top to bottom; the translator is still created now.
+ *
  * Not an async function: `create` must run in the same task as the click that
  * asked for the translation, or the browser refuses the language-pack download.
  * Nothing is awaited before it.
@@ -120,6 +125,10 @@ export function translateBlock(
   block: Block,
   target: string,
   onProgress: (loaded: number) => void,
+  {
+    onLines,
+    after = Promise.resolve(),
+  }: { onLines?: (lines: string[]) => void; after?: Promise<unknown> } = {},
 ): Promise<{ text: string; lang: string }> {
   const cached = block.translation;
   if (
@@ -135,17 +144,19 @@ export function translateBlock(
   const translator = factory();
   if (!translator) return Promise.reject(new Error('Tradução não suportada neste navegador'));
 
-  return createFor(translator, block.lang, target, block.text, (monitor) => {
+  const created = createFor(translator, block.lang, target, block.text, (monitor) => {
     monitor.addEventListener('downloadprogress', (event) => onProgress(event.loaded));
-  }).then(({ instance, source }) =>
-    Promise.all(
-      block.text.split('\n').map((line) =>
-        // A line break inside a translated line would shift every paragraph after it.
-        line.trim() ? instance.translate(line).then((text) => text.replace(/\s*\n\s*/g, ' ')) : line,
-      ),
-      // `source` is the language the text actually reads as: the caller stores it.
-    ).then((lines) => ({ text: lines.join('\n'), lang: source })),
-  );
+  });
+  return Promise.all([created, after]).then(async ([{ instance, source }]) => {
+    const lines: string[] = [];
+    for (const line of block.text.split('\n')) {
+      // A line break inside a translated line would shift every paragraph after it.
+      lines.push(line.trim() ? (await instance.translate(line)).replace(/\s*\n\s*/g, ' ') : line);
+      onLines?.(lines);
+    }
+    // `source` is the language the text actually reads as: the caller stores it.
+    return { text: lines.join('\n'), lang: source };
+  });
 }
 
 /** Message tag for translation requests answered by the offscreen document. */

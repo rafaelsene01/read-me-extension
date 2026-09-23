@@ -118,6 +118,26 @@ describe('translateBlock', () => {
     expect(api.translate).toHaveBeenCalledTimes(3);
   });
 
+  it('reports the lines as they are done, and waits for `after` before starting', async () => {
+    const api = fakeTranslator();
+    api.translate.mockImplementation(async (line: string) => `[${line}]`);
+    let release!: () => void;
+    const after = new Promise<void>((resolve) => (release = resolve));
+    const reported: string[] = [];
+    const job = translateBlock(block({ text: 'Um.\n\nDois.' }), 'pt', () => {}, {
+      after,
+      onLines: (lines) => reported.push(lines.join('|')),
+    });
+
+    await Promise.resolve();
+    expect(api.create).toHaveBeenCalledTimes(1);
+    expect(api.translate).not.toHaveBeenCalled();
+
+    release();
+    await job;
+    expect(reported).toEqual(['[Um.]', '[Um.]|', '[Um.]||[Dois.]']);
+  });
+
   it('forwards download progress reported by the monitor', async () => {
     fakeTranslator();
     const progress: number[] = [];

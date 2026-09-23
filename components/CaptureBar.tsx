@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { BookOpenText, CircleAlert, ExternalLink, MousePointerClick, Settings, Trash2 } from 'lucide-react';
+import { BookOpenText, CircleAlert, ExternalLink, MousePointerClick, Settings } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { requestAndCapture, type CaptureFailure } from '../lib/capture';
-import { sendCommand, type CaptureMode } from '../lib/messages';
+import { type CaptureMode } from '../lib/messages';
 import { t, type Key } from '../lib/i18n';
-import { clearBlocks } from '../lib/storage';
 
 /** Keys, translated with t() where they are shown. */
 export const MESSAGES: Record<CaptureFailure, Key | null> = {
@@ -29,11 +28,7 @@ function openSite(hash: string): void {
     .catch(() => {});
 }
 
-interface CaptureBarProps {
-  empty: boolean;
-}
-
-export default function CaptureBar({ empty }: CaptureBarProps) {
+export default function CaptureBar() {
   const [tab, setTab] = useState<{ id: number; url: string | null } | null>(null);
   const [message, setMessage] = useState<Key | null>(null);
 
@@ -92,41 +87,21 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
     });
   }
 
-  async function clear(): Promise<void> {
-    setMessage(null);
-    await sendCommand({ type: 'stop' });
-    await clearBlocks();
-  }
-
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        <Button className="flex-1" onClick={() => capture('page')}>
-          <BookOpenText />
-          {t('Ler página')}
-        </Button>
-        <Button variant="outline" className="flex-1" onClick={() => capture('picker')}>
-          <MousePointerClick />
-          {t('Escolher elemento')}
+      {/* The way to the extension site and its settings stays in sight: the
+          panel is only the quick reader, and the user has to see there is more. */}
+      <header className="flex min-w-0 items-center gap-1">
+        <h1 className="flex-1 font-serif text-base font-semibold">ReadMe</h1>
+        <Button variant="ghost" size="sm" className="min-w-0" onClick={() => openSite('')}>
+          <ExternalLink />
+          <span className="truncate">{t('Abrir o site da extensão')}</span>
         </Button>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="outline"
-              size="icon"
-              aria-label={t('Abrir o site da extensão')}
-              onClick={() => openSite('')}
-            >
-              <ExternalLink />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('Abrir o site da extensão')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
+              variant="ghost"
+              size="icon-sm"
               aria-label={t('Configurações')}
               onClick={() => openSite('#settings')}
             >
@@ -135,20 +110,17 @@ export default function CaptureBar({ empty }: CaptureBarProps) {
           </TooltipTrigger>
           <TooltipContent>{t('Configurações')}</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('Limpar')}
-              disabled={empty}
-              onClick={() => void clear()}
-            >
-              <Trash2 />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('Limpar')}</TooltipContent>
-        </Tooltip>
+      </header>
+
+      <div className="flex min-w-0 gap-2">
+        <Button className="min-w-0 flex-1" onClick={() => capture('page')}>
+          <BookOpenText />
+          <span className="truncate">{t('Ler página')}</span>
+        </Button>
+        <Button variant="outline" className="min-w-0 flex-1" onClick={() => capture('picker')}>
+          <MousePointerClick />
+          <span className="truncate">{t('Escolher elemento')}</span>
+        </Button>
       </div>
 
       {message && (

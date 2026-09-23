@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, ChevronsUpDown, Star } from 'lucide-react';
+import { AudioLines, Check, ChevronsUpDown, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,7 +25,7 @@ export interface VoiceOption {
   /** Secondary text: language or preset id. */
   detail: string;
   group: string;
-  /** Character image; system voices fall back to an initial. */
+  /** Character image; system voices fall back to a sound-wave icon. */
   avatar?: string;
 }
 
@@ -49,17 +49,14 @@ export function voiceKey(engine: TtsEngineId, id: string): string {
   return `${engine}:${id}`;
 }
 
-/** Initial for the fallback, skipping the vendor prefix of system voices. */
-function initial(name: string): string {
-  return name.replace(/^(Microsoft|Google|Apple)\s+/i, '').charAt(0).toUpperCase();
-}
-
 function VoiceAvatar({ option, className }: { option: VoiceOption; className?: string }) {
   return (
     <Avatar className={cn('size-6 bg-muted', className)}>
       {option.avatar && <AvatarImage src={option.avatar} alt="" />}
-      <AvatarFallback className="bg-primary/15 text-[10px] font-medium text-primary">
-        {initial(option.name)}
+      {/* System voices have no face: a sound wave says "voice" where a lone
+          initial ("P" for "Google português") read as a placeholder. */}
+      <AvatarFallback className="bg-primary/15 text-primary">
+        <AudioLines className="size-[55%] text-primary" />
       </AvatarFallback>
     </Avatar>
   );
@@ -155,8 +152,11 @@ export default function TtsVoiceSelect({
                       }}
                     >
                       <VoiceAvatar option={option} />
-                      <span className="truncate">{option.name}</span>
-                      <span className="truncate text-xs text-muted-foreground">{option.detail}</span>
+                      {/* Name over detail: side by side, a narrow panel cut both. */}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{option.name}</span>
+                        <span className="truncate text-xs text-muted-foreground">{option.detail}</span>
+                      </span>
                       <Check className={cn('ml-auto', key === value ? 'opacity-100' : 'opacity-0')} />
                       <Button
                         variant="ghost"

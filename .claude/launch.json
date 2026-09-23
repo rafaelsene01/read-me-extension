@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "runtimeArgs": [
+        "node_modules/wxt/bin/wxt.mjs"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "stub-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "4173", "-d", "C:/Users/rafae/AppData/Local/Temp/claude/D--read-me-extension/67699a52-7006-42a4-b1c7-5e870aa7f13e/scratchpad/site"],
+      "port": 4173
+    }
+  ]
+}

@@ -66,9 +66,9 @@ export default function App() {
     location.hash === '#settings' ? 'settings' : 'file',
   );
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  // Collapsed by default: the transport line is always there, and what sits
-  // under it (the model status, the alerts, the translation panel) is opened
-  // when it is wanted.
+  // Collapsed by default: the transport line and the translation tabs are
+  // always there, and what sits under them (the model status, the alerts) is
+  // opened when it is wanted.
   const [minimized, setMinimized] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   // A document being typed in: the header carries no paging and no zoom.
@@ -204,8 +204,9 @@ export default function App() {
   function navButton(value: typeof tab, icon: ReactNode, label: string) {
     return (
       <Button
-        variant={tab === value ? 'secondary' : 'ghost'}
-        className="justify-start"
+        variant="ghost"
+        // secondary is the sidebar's own colour, so the current page takes the accent.
+        className={cn('justify-start', tab === value && 'bg-accent text-accent-foreground')}
         aria-current={tab === value ? 'page' : undefined}
         onClick={() => setTab(value)}
       >
@@ -253,90 +254,95 @@ export default function App() {
                 {!empty && (
                   // Outside the scroll area: the title, the page navigation and the
                   // zoom stay put while the document scrolls under them.
-                  <header className="flex shrink-0 items-center gap-2 border-b pb-3">
-                    {composing ? (
-                      <Input
-                        value={typed.title}
-                        onChange={(event) => typed.setTitle(event.target.value)}
-                        placeholder={t('Sem título')}
-                        aria-label={t('Título do documento')}
-                        className="h-auto flex-1 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0 md:text-lg"
-                      />
-                    ) : (
-                      <h2 className="flex-1 truncate font-serif text-xl font-semibold tracking-tight">
-                        {trName(blocks[0]!.sourceTitle)}
-                      </h2>
-                    )}
-                    {paged && !composing && (
-                      <>
-                        {pageButton(-1)}
-                        <span className="text-muted-foreground tabular-nums">
-                          {current + 1} / {blocks.length}
-                        </span>
-                        {pageButton(1)}
-                      </>
-                    )}
-                    <Select
-                      value={activeLang}
-                      disabled={state.playing}
-                      onValueChange={(lang) => void setLang(lang)}
-                    >
+                  <header className="flex shrink-0 flex-col gap-2 border-b pb-3">
+                    {/* The title gets a line of its own, so the tools never squeeze it. */}
+                    <div className="flex min-w-0 items-center gap-2">
+                      {composing ? (
+                        <Input
+                          value={typed.title}
+                          onChange={(event) => typed.setTitle(event.target.value)}
+                          placeholder={t('Sem título')}
+                          aria-label={t('Título do documento')}
+                          className="h-auto flex-1 border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0 md:text-lg"
+                        />
+                      ) : (
+                        <h2 className="flex-1 truncate font-serif text-xl font-semibold tracking-tight">
+                          {trName(blocks[0]!.sourceTitle)}
+                        </h2>
+                      )}
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <SelectTrigger size="sm" aria-label={t('Idioma do texto')} className="text-xs">
-                            <Languages />
-                            <SelectValue />
-                          </SelectTrigger>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t('Fechar documento')}
+                            onClick={() => {
+                              void sendCommand({ type: 'stop' }).then(() => clearBlocks());
+                            }}
+                          >
+                            <X />
+                          </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          {t('Idioma do texto: define a voz da leitura e a origem da tradução')}
-                        </TooltipContent>
+                        <TooltipContent>{t('Fechar documento')}</TooltipContent>
                       </Tooltip>
-                      <SelectContent>
-                        {(LANGS.includes(activeLang) ? LANGS : [activeLang, ...LANGS]).map(
-                          (lang) => (
-                            <SelectItem key={lang} value={lang}>
-                              {languageName(lang)}
-                            </SelectItem>
-                          ),
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {!composing && zoomButton(-1)}
-                    {!composing && zoomButton(1)}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label={t('Salvar na biblioteca')}
-                          onClick={() => {
-                            setSaveError(null);
-                            void saveDocument(toLibraryDocument(blocks)).then((result) => {
-                              if (!result.ok) setSaveError(t('Armazenamento cheio'));
-                            });
-                          }}
-                        >
-                          <Save />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{t('Salvar na biblioteca')}</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t('Fechar documento')}
-                          onClick={() => {
-                            void sendCommand({ type: 'stop' }).then(() => clearBlocks());
-                          }}
-                        >
-                          <X />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{t('Fechar documento')}</TooltipContent>
-                    </Tooltip>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {paged && !composing && (
+                        <>
+                          {pageButton(-1)}
+                          <span className="text-muted-foreground tabular-nums">
+                            {current + 1} / {blocks.length}
+                          </span>
+                          {pageButton(1)}
+                        </>
+                      )}
+                      <Select
+                        value={activeLang}
+                        disabled={state.playing}
+                        onValueChange={(lang) => void setLang(lang)}
+                      >
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SelectTrigger size="sm" aria-label={t('Idioma do texto')} className="text-xs">
+                              <Languages />
+                              <SelectValue />
+                            </SelectTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t('Idioma do texto: define a voz da leitura e a origem da tradução')}
+                          </TooltipContent>
+                        </Tooltip>
+                        <SelectContent>
+                          {(LANGS.includes(activeLang) ? LANGS : [activeLang, ...LANGS]).map(
+                            (lang) => (
+                              <SelectItem key={lang} value={lang}>
+                                {languageName(lang)}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {!composing && zoomButton(-1)}
+                      {!composing && zoomButton(1)}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            aria-label={t('Salvar na biblioteca')}
+                            onClick={() => {
+                              setSaveError(null);
+                              void saveDocument(toLibraryDocument(blocks)).then((result) => {
+                                if (!result.ok) setSaveError(t('Armazenamento cheio'));
+                              });
+                            }}
+                          >
+                            <Save />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t('Salvar na biblioteca')}</TooltipContent>
+                      </Tooltip>
+                    </div>
                   </header>
                 )}
                 {empty || !prefs ? (
@@ -376,21 +382,21 @@ export default function App() {
 
             {tab === 'audio' && (
               <section className="-mx-1 flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto px-1">
-                <h2 className="text-lg font-semibold">{t('Áudio')}</h2>
+                <h2 className="font-serif text-xl font-semibold tracking-tight">{t('Áudio')}</h2>
                 <AudioList />
               </section>
             )}
 
             {tab === 'library' && (
               <section className="-mx-1 flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto px-1">
-                <h2 className="text-lg font-semibold">{t('Biblioteca')}</h2>
+                <h2 className="font-serif text-xl font-semibold tracking-tight">{t('Biblioteca')}</h2>
                 <LibraryList onOpened={() => setTab('file')} />
               </section>
             )}
 
             {tab === 'settings' && prefs && (
               <section className="flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto">
-                <h2 className="text-lg font-semibold">{t('Configurações')}</h2>
+                <h2 className="font-serif text-xl font-semibold tracking-tight">{t('Configurações')}</h2>
                 <Settings prefs={prefs} />
               </section>
             )}
@@ -422,8 +428,9 @@ export default function App() {
                   onToggleMinimized={() => setMinimized((current) => !current)}
                 />
                 {/* Under the transport bar: what is read is a choice about the
-                    reading, not about the document. */}
-                {!minimized && <TranslatePanel blocks={blocks} prefs={prefs} />}
+                    reading, not about the document. Not folded away with the rest:
+                    the Original/Translation switch is what the reader shows. */}
+                <TranslatePanel blocks={blocks} prefs={prefs} />
               </div>
             </footer>
           )}

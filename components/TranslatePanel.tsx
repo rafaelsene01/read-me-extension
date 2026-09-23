@@ -34,6 +34,24 @@ interface TranslatePanelProps {
   prefs: Prefs;
 }
 
+/** Paragraphs of a text as the segmenter counts them: its non-blank lines. */
+function paragraphCount(text: string): number {
+  return text.split('\n').filter((line) => line.trim()).length;
+}
+
+/** The block carrying `text` as its translation into `target`. */
+function withTranslation(block: Block, target: string, text: string): Block {
+  return {
+    ...block,
+    translation: {
+      target,
+      text,
+      paragraphs: segmentBlock(text, target, `${block.id}#t`),
+      sourceTextHash: hashText(block.text),
+    },
+  };
+}
+
 function startTransition(apply: () => void): void {
   const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
   if (doc.startViewTransition) doc.startViewTransition(apply);
@@ -43,6 +61,8 @@ function startTransition(apply: () => void): void {
 export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
   const [pairState, setPairState] = useState<Availability>('available');
   const [progress, setProgress] = useState<number | null>(null);
+  /** Paragraphs translated out of the total, while a translation runs. */
+  const [count, setCount] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Warnings the user closed; a new attempt brings them back if they still hold. */
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -94,12 +114,66 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
   function translate(): void {
     start();
     const target = prefs.targetLang;
+    const total = translatable.reduce((sum, block) => sum + paragraphCount(block.text), 0);
+    /** Paragraphs translated so far, and the translated text so far, by block. */
+    const done = new Map<string, number>();
+    const partial = new Map<string, string>();
+    const report = (): void =>
+      setCount({ done: [...done.values()].reduce((sum, n) => sum + n, 0), total });
+    report();
+
+    // The translation fills in on screen as it goes: what is done is written to
+    // the buffer every so often. Writes are chained so a partial one never lands
+    // after the final one, and none is started once the final one is on its way.
+    // ponytail: each write rewrites the whole buffer; write per block instead if
+    // a long capture makes it stutter.
+    let writing: Promise<unknown> = Promise.resolve();
+    let scheduled = false;
+    let finished = false;
+    const flush = (): void => {
+      scheduled = false;
+      if (finished) return;
+      const texts = new Map(partial);
+      writing = writing.then(() =>
+        setBlocks(
+          blocks.map((block) => {
+            const text = texts.get(block.id);
+            return text === undefined ? block : withTranslation(block, target, text);
+          }),
+        ),
+      );
+    };
+
     // Every create fires in this same task, with nothing awaited first, so the
-    // click still authorizes the language-pack download.
-    const jobs = translatable.map((block) => translateBlock(block, target, setProgress));
+    // click still authorizes the language-pack download. The lines themselves go
+    // block after block, top to bottom.
+    let previous: Promise<unknown> = Promise.resolve();
+    const jobs = translatable.map((block) => {
+      const job = translateBlock(block, target, setProgress, {
+        after: previous,
+        onLines: (lines) => {
+          partial.set(block.id, lines.join('\n'));
+          done.set(block.id, paragraphCount(lines.join('\n')));
+          report();
+          if (!scheduled) {
+            scheduled = true;
+            setTimeout(flush, 250);
+          }
+        },
+      });
+      previous = job;
+      // A stored translation comes back whole, without reporting its lines.
+      return job.then((result) => {
+        done.set(block.id, paragraphCount(block.text));
+        report();
+        return result;
+      });
+    });
 
     void Promise.all(jobs)
       .then(async (results) => {
+        finished = true;
+        await writing;
         const byId = new Map(translatable.map((block, index) => [block.id, results[index]!]));
         const result = await setBlocks(
           blocks.map((block) => {
@@ -107,22 +181,19 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
             if (done === undefined) return block;
             // The translator may have read a different source language off the
             // text; keeping it is what stops the refusal from coming back.
-            const rebased = applyLang(block, done.lang);
-            return {
-              ...rebased,
-              translation: {
-                target,
-                text: done.text,
-                paragraphs: segmentBlock(done.text, target, `${block.id}#t`),
-                sourceTextHash: hashText(block.text),
-              },
-            };
+            return withTranslation(applyLang(block, done.lang), target, done.text);
           }),
         );
         if (!result.ok) setError(t('Armazenamento cheio'));
       })
-      .catch(fail)
-      .finally(() => setProgress(null));
+      .catch((cause: unknown) => {
+        finished = true;
+        fail(cause);
+      })
+      .finally(() => {
+        setProgress(null);
+        setCount(null);
+      });
   }
 
   const alerts = [
@@ -182,7 +253,17 @@ export default function TranslatePanel({ blocks, prefs }: TranslatePanelProps) {
         </div>
       )}
 
-      {progress !== null && <Progress value={progress * 100} />}
+      {progress !== null && (
+        <div className="flex flex-col gap-1">
+          {count && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {t('Traduzindo {done} de {total} parágrafos', count)}
+            </span>
+          )}
+          {/* Until the first paragraph is done the bar shows the language-pack download. */}
+          <Progress value={count?.done ? (count.done / count.total) * 100 : progress * 100} />
+        </div>
+      )}
 
       {alerts.map((text) => (
         <Alert key={text} variant="destructive" className="pr-10">
