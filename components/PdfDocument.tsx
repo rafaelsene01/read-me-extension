@@ -186,9 +186,15 @@ export default function PdfDocument({
               if (element) pageRefs.current.set(number, element);
               else pageRefs.current.delete(number);
             }}
+            // As wide as a sheet at the current zoom, in both views: the text view
+            // reads in the page's own measure and only grows with the zoom buttons.
             // Room kept for a page that is not drawn: its own height on the drawn
             // view, a guess on the text view (the text takes what it takes).
-            style={shown ? undefined : { height: reflow ? 600 : size.height * pageScale + 24 }}
+            className="mx-auto max-w-full"
+            style={{
+              width: sheet * scale,
+              ...(shown ? {} : { height: reflow ? 600 : size.height * pageScale + 24 }),
+            }}
           >
             {content}
           </section>
