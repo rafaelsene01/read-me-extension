@@ -1,7 +1,6 @@
 import {
   getDocument,
   GlobalWorkerOptions,
-  OPS,
   TextLayer,
   Util,
   type PDFDocumentProxy,
@@ -15,10 +14,8 @@ import {
   boilerplate,
   classify,
   groupParagraphs,
-  italicFile,
   signature,
   withoutBullet,
-  type PdfBox,
   type PdfParagraph,
   type TextPiece,
 } from './pdf-text';
@@ -39,9 +36,6 @@ function options(bytes: Uint8Array): Record<string, unknown> {
     // The 14 standard fonts, for the PDFs that embed none (vendored in public/pdf-fonts).
     standardFontDataUrl: chrome.runtime.getURL('pdf-fonts/'),
     isEvalSupported: false,
-    // Keeps each font's file after loading it: whether a font is an italic is
-    // sometimes only written there (see italicFile).
-    fontExtraProperties: true,
     // The .wasm decoders (JBIG2, JPEG 2000, colour management) are not shipped;
     // pdf.js falls back to its JavaScript versions.
     useWasm: false,
@@ -63,9 +57,6 @@ function open(book: string, bytes: Uint8Array): Promise<PDFDocumentProxy> {
 /** What pdf.js tells of a loaded font. */
 interface EmbeddedFont {
   name?: string;
-  italic?: boolean;
-  /** The font file itself, kept because of fontExtraProperties. */
-  data?: Uint8Array;
 }
 
 /** Font names that are monospaced: pdf.js calls an embedded Courier New "serif". */
@@ -86,8 +77,8 @@ async function piecesOf(
   const { items, styles } = await page.getTextContent();
   // The fonts reach this thread with the operator list; only then is their real name known.
   await page.getOperatorList();
-  const fonts = new Map<string, { mono: boolean; italic: boolean }>();
-  const fontOf = (fontName: string): { mono: boolean; italic: boolean } => {
+  const fonts = new Map<string, { mono: boolean }>();
+  const fontOf = (fontName: string): { mono: boolean } => {
     if (!fonts.has(fontName)) {
       let font: EmbeddedFont | null = null;
       try {
@@ -98,7 +89,6 @@ async function piecesOf(
       const name = font?.name ?? '';
       fonts.set(fontName, {
         mono: styles[fontName]?.fontFamily === 'monospace' || MONO.test(name),
-        italic: Boolean(font?.italic) || /italic|oblique/i.test(name) || italicFile(font?.data),
       });
     }
     return fonts.get(fontName)!;
@@ -273,17 +263,25 @@ export async function drawPdfPage(
   const page = await pdf.getPage(pageNumber);
   const viewport = page.getViewport({ scale: scale * (window.devicePixelRatio || 1) });
 
-  canvas.width = Math.round(viewport.width);
-  canvas.height = Math.round(viewport.height);
+  // Drawn off screen and copied over whole: the canvas on show keeps the old
+  // picture until the new one is complete, instead of going blank on a zoom
+  // and filling in by strips.
+  const offscreen = document.createElement('canvas');
+  offscreen.width = Math.round(viewport.width);
+  offscreen.height = Math.round(viewport.height);
 
-  const task = page.render({ canvas, viewport });
+  const task = page.render({ canvas: offscreen, viewport });
   drawing.set(canvas, task);
   try {
     await task.promise;
   } catch (error) {
     // A cancelled render is the expected outcome of a zoom or page change.
-    if ((error as { name?: string }).name !== 'RenderingCancelledException') throw error;
+    if ((error as { name?: string }).name === 'RenderingCancelledException') return;
+    throw error;
   }
+  canvas.width = offscreen.width;
+  canvas.height = offscreen.height;
+  canvas.getContext('2d')!.drawImage(offscreen, 0, 0);
 }
 
 /** Size of every page at scale 1, in order: the room each one takes before it is drawn. */
@@ -298,185 +296,6 @@ export async function pdfPageSizes(
     sizes.push({ width, height });
   }
   return sizes;
-}
-
-/** A picture of a page: where it sits (scale 1) and its pixels as a data URL. */
-export interface PdfImage {
-  box: PdfBox;
-  src: string;
-}
-
-/** Pictures smaller than this, in page units, are bullets and rules, not figures. */
-const MIN_PICTURE = 24;
-
-/** Where the unit square of an image lands on the page under `ctm`. */
-function imageBox(ctm: number[]): PdfBox {
-  const corners = [
-    [0, 0],
-    [1, 0],
-    [0, 1],
-    [1, 1],
-  ].map(([x, y]) => [ctm[0]! * x! + ctm[2]! * y! + ctm[4]!, ctm[1]! * x! + ctm[3]! * y! + ctm[5]!]);
-  const xs = corners.map(([x]) => x!);
-  const ys = corners.map(([, y]) => y!);
-  const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
-}
-
-/** Pictures cut out per page, so scrolling back does not draw a page again. */
-const pictures = new Map<string, Promise<PdfImage[]>>();
-
-/**
- * The pictures of a page, top to bottom, each cut out of the page drawn at
- * twice its size. Where they sit comes from walking the page's drawing
- * operations, keeping track of the transform the way the renderer does.
- * Cutting from the drawn page, rather than decoding each image, gets masks,
- * colour spaces and every image format right for free.
- */
-export function pdfPageImages(book: string, bytes: Uint8Array, pageNumber: number): Promise<PdfImage[]> {
-  const key = `${book}:${pageNumber}`;
-  let found = pictures.get(key);
-  if (!found) {
-    found = cutPictures(book, bytes, pageNumber);
-    pictures.set(key, found);
-    found.catch(() => pictures.delete(key));
-  }
-  return found;
-}
-
-/** Scale the pages are drawn at for cutting pictures and reading ink colours. */
-const DRAWN_SCALE = 2;
-
-/** The last few pages drawn off screen; each is some megabytes of pixels. */
-const drawn = new Map<string, Promise<HTMLCanvasElement>>();
-
-/** A page drawn off screen at DRAWN_SCALE, shared by the pictures and the ink colours. */
-function drawnPage(book: string, bytes: Uint8Array, pageNumber: number): Promise<HTMLCanvasElement> {
-  const key = `${book}:${pageNumber}`;
-  let canvas = drawn.get(key);
-  if (!canvas) {
-    canvas = (async () => {
-      const page = await (await open(book, bytes)).getPage(pageNumber);
-      const viewport = page.getViewport({ scale: DRAWN_SCALE });
-      const element = document.createElement('canvas');
-      element.width = Math.round(viewport.width);
-      element.height = Math.round(viewport.height);
-      await page.render({ canvas: element, viewport, background: '#ffffff' }).promise;
-      return element;
-    })();
-    drawn.set(key, canvas);
-    canvas.catch(() => drawn.delete(key));
-    // ponytail: keeps the 6 latest; a Map iterates oldest first.
-    if (drawn.size > 6) drawn.delete(drawn.keys().next().value!);
-  }
-  return canvas;
-}
-
-/**
- * The colour each box of text is printed in, read off the drawn page: the
- * average of its inked pixels. Only a colour worth keeping comes back (a
- * tip in teal, a title in purple); black and grey text come back null and
- * take the theme's colour, so a dark theme still reads.
- */
-export async function pdfTextColors(
-  book: string,
-  bytes: Uint8Array,
-  pageNumber: number,
-  boxes: PdfBox[],
-): Promise<Array<string | null>> {
-  const canvas = await drawnPage(book, bytes, pageNumber);
-  const context = canvas.getContext('2d', { willReadFrequently: true })!;
-  return boxes.map((box) => {
-    const width = Math.max(1, Math.round(box.width * DRAWN_SCALE));
-    const height = Math.max(1, Math.round(box.height * DRAWN_SCALE));
-    const { data } = context.getImageData(
-      Math.round(box.x * DRAWN_SCALE),
-      Math.round(box.y * DRAWN_SCALE),
-      width,
-      height,
-    );
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let inked = 0;
-    for (let index = 0; index < data.length; index += 4) {
-      // Ink is what is clearly darker than the paper; antialiased edges are left out.
-      if (data[index]! + data[index + 1]! + data[index + 2]! > 450) continue;
-      r += data[index]!;
-      g += data[index + 1]!;
-      b += data[index + 2]!;
-      inked++;
-    }
-    if (inked === 0) return null;
-    [r, g, b] = [r / inked, g / inked, b / inked];
-    return Math.max(r, g, b) - Math.min(r, g, b) > 40
-      ? `rgb(${Math.round(r)} ${Math.round(g)} ${Math.round(b)})`
-      : null;
-  });
-}
-
-async function cutPictures(book: string, bytes: Uint8Array, pageNumber: number): Promise<PdfImage[]> {
-  const pdf = await open(book, bytes);
-  const page = await pdf.getPage(pageNumber);
-  const viewport = page.getViewport({ scale: 1 });
-  const { fnArray, argsArray } = await page.getOperatorList();
-
-  const boxes: PdfBox[] = [];
-  let ctm: number[] = viewport.transform;
-  const saved: number[][] = [];
-  fnArray.forEach((fn, index) => {
-    const args = argsArray[index] as unknown[];
-    switch (fn) {
-      case OPS.save:
-        saved.push(ctm);
-        break;
-      case OPS.restore:
-        ctm = saved.pop() ?? ctm;
-        break;
-      case OPS.transform:
-        ctm = Util.transform(ctm, args);
-        break;
-      case OPS.paintFormXObjectBegin:
-        saved.push(ctm);
-        if (Array.isArray(args[0])) ctm = Util.transform(ctm, args[0]);
-        break;
-      case OPS.paintFormXObjectEnd:
-        ctm = saved.pop() ?? ctm;
-        break;
-      case OPS.paintImageXObject:
-      case OPS.paintInlineImageXObject:
-      case OPS.paintImageXObjectRepeat: {
-        const box = imageBox(ctm);
-        // Clipped to the page: a bleed image reaches past its edges.
-        const x = Math.max(0, box.x);
-        const y = Math.max(0, box.y);
-        const width = Math.min(viewport.width, box.x + box.width) - x;
-        const height = Math.min(viewport.height, box.y + box.height) - y;
-        const same = boxes.some(
-          (other) => Math.abs(other.x - x) < 2 && Math.abs(other.y - y) < 2 && Math.abs(other.width - width) < 2,
-        );
-        if (width >= MIN_PICTURE && height >= MIN_PICTURE && !same) boxes.push({ x, y, width, height });
-        break;
-      }
-    }
-  });
-  if (boxes.length === 0) return [];
-
-  const canvas = await drawnPage(book, bytes, pageNumber);
-  const scale = DRAWN_SCALE;
-
-  return boxes
-    .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map((box) => {
-      const cut = document.createElement('canvas');
-      cut.width = Math.round(box.width * scale);
-      cut.height = Math.round(box.height * scale);
-      cut
-        .getContext('2d')!
-        .drawImage(canvas, box.x * scale, box.y * scale, cut.width, cut.height, 0, 0, cut.width, cut.height);
-      return { box, src: cut.toDataURL('image/png') };
-    });
 }
 
 /** The text layer being laid out per container: a new one cancels it. */

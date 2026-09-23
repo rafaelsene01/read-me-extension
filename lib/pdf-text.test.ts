@@ -4,7 +4,6 @@ import {
   boilerplate,
   classify,
   groupParagraphs,
-  italicFile,
   sentenceBoxes,
   withoutBullet,
   type TextPiece,
@@ -166,25 +165,5 @@ describe('boilerplate', () => {
       line(`Texto da página ${index}`, 5),
     ]);
     expect(boilerplate(pages)).toEqual(['History@64,168']);
-  });
-});
-
-describe('italicFile', () => {
-  /** A font file holding one table, `tag`, with `write` filling its bytes. */
-  function font(tag: string, write: (view: DataView, at: number) => void): Uint8Array {
-    const bytes = new Uint8Array(12 + 16 + 64);
-    const view = new DataView(bytes.buffer);
-    view.setUint16(4, 1);
-    [...tag].forEach((char, index) => (bytes[12 + index] = char.charCodeAt(0)));
-    view.setUint32(12 + 8, 28);
-    write(view, 28);
-    return bytes;
-  }
-
-  it('reads the italic bit of head, or the slant of post', () => {
-    expect(italicFile(font('head', (view, at) => view.setUint16(at + 44, 2)))).toBe(true);
-    expect(italicFile(font('post', (view, at) => view.setInt32(at + 4, -12 << 16)))).toBe(true);
-    expect(italicFile(font('head', () => {}))).toBe(false);
-    expect(italicFile(undefined)).toBe(false);
   });
 });

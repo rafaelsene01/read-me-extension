@@ -17,8 +17,6 @@ export interface TextPiece {
   height: number;
   /** Set in a monospaced font: code, in a book about programming. */
   mono?: boolean;
-  /** Set in an italic font. */
-  italic?: boolean;
 }
 
 /** A rectangle, in the same coordinates as TextPiece. */
@@ -55,8 +53,6 @@ export interface PdfParagraph {
   size: number;
   /** Most of its characters are in a monospaced font. */
   mono: boolean;
-  /** Most of its characters are in an italic font: a tip, a quote, an aside. */
-  italic: boolean;
 }
 
 interface Line {
@@ -215,7 +211,6 @@ export function groupParagraphs(pieces: TextPiece[]): PdfParagraph[] {
         lines: out,
         size: heights[Math.floor(heights.length / 2)]!,
         mono: chars(pieces.filter((piece) => piece.mono)) > chars(pieces) * 0.6,
-        italic: chars(pieces.filter((piece) => piece.italic)) > chars(pieces) * 0.6,
       });
     }
 
@@ -377,26 +372,4 @@ export function boilerplate(pages: TextPiece[][]): string[] {
     for (const key of new Set(frame.map(signature))) seen.set(key, (seen.get(key) ?? 0) + 1);
   }
   return [...seen].filter(([, count]) => count >= 3).map(([key]) => key);
-}
-
-/**
- * Whether an embedded font file is an italic: its `head` table marks it, or
- * its `post` table slants it. A book can embed its italic under the plain
- * family name with nothing in the PDF saying so, and only the file tells.
- */
-export function italicFile(data: Uint8Array | undefined): boolean {
-  if (!data || data.length < 12) return false;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const tables = view.getUint16(4);
-  for (let index = 0; index < tables; index++) {
-    const record = 12 + index * 16;
-    if (record + 16 > data.length) break;
-    const tag = String.fromCharCode(...data.subarray(record, record + 4));
-    const offset = view.getUint32(record + 8);
-    // head.macStyle bit 1 is italic.
-    if (tag === 'head' && offset + 46 <= data.length && view.getUint16(offset + 44) & 2) return true;
-    // post.italicAngle, a 16.16 fixed number of degrees.
-    if (tag === 'post' && offset + 8 <= data.length && view.getInt32(offset + 4) !== 0) return true;
-  }
-  return false;
 }

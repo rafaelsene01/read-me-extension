@@ -29,7 +29,6 @@ import type { Block, Cursor, Paragraph, ParagraphKind, Prefs } from '../lib/type
 // is actually shown, so it stops riding along in the side panel, which never
 // renders a page at all.
 const PdfPage = lazy(() => import('./PdfPage'));
-const PdfReflow = lazy(() => import('./PdfPage').then((module) => ({ default: module.PdfReflow })));
 
 interface BlockListProps {
   blocks: Block[];
@@ -45,8 +44,6 @@ interface BlockListProps {
   visible?: string;
   /** Documents page: show a chapter with the HTML and CSS of the book when it is available. */
   bookView?: boolean;
-  /** Documents page: a PDF page as its text (headings, code, lists) instead of the drawn page. */
-  reflow?: boolean;
 }
 
 /**
@@ -82,9 +79,9 @@ function kindTag(kind: ParagraphKind): 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' |
 function kindClasses(kind: ParagraphKind): string {
   switch (kind) {
     case 'h1':
-      return 'mt-[0.6em] border-b pb-[0.2em] text-[1.6em] font-semibold';
+      return 'text-[1.6em] font-semibold';
     case 'h2':
-      return 'mt-[0.6em] border-b pb-[0.2em] text-[1.4em] font-semibold';
+      return 'text-[1.4em] font-semibold';
     case 'h3':
       return 'text-[1.2em] font-semibold';
     case 'h4':
@@ -113,7 +110,6 @@ export default function BlockList({
   scale,
   visible,
   bookView,
-  reflow = false,
 }: BlockListProps) {
   const activeRef = useRef<HTMLSpanElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -379,10 +375,6 @@ export default function BlockList({
                 </div>
               ) : paragraphs === null ? (
                 <p className="text-muted-foreground">{t('Bloco ainda não traduzido.')}</p>
-              ) : bookView && block.pdf && reflow ? (
-                <Suspense fallback={<>{kindsView(block, paragraphs)}</>}>
-                  <PdfReflow block={block} paragraphs={kindsView(block, paragraphs)} />
-                </Suspense>
               ) : bookView && block.pdf ? (
                 // Falls back to the extracted paragraphs when the file is no longer
                 // stored, and shows the same while pdf.js is being fetched.

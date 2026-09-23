@@ -1,11 +1,8 @@
 import {
-  cloneElement,
-  isValidElement,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from 'react';
@@ -14,11 +11,8 @@ import { loadBook } from '../lib/book-assets';
 import { playAt, sendCommand } from '../lib/messages';
 import {
   drawPdfPage,
-  pdfPageImages,
   pdfPageLayout,
-  pdfTextColors,
   renderTextLayer,
-  type PdfImage,
 } from '../lib/pdf';
 import { sentenceBoxes, type PdfBox, type PdfParagraph } from '../lib/pdf-text';
 import { revealElement } from '../lib/scroll';
@@ -52,8 +46,10 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
   const [measured, setMeasured] = useState<PdfBox[][][] | null>(null);
   const activeRef = useRef<HTMLSpanElement | null>(null);
   const bytesRef = useRef<Uint8Array | null>(null);
-  // undefined while loading, null when the file is gone: both fall back.
+  // undefined while loading, null when the file is gone (which falls back to the text).
   const [layout, setLayout] = useState<Layout | undefined | null>(undefined);
+  /** The canvas holds the page: until then the sheet stays blank, then fades in. */
+  const [drawn, setDrawn] = useState(false);
 
   const book = block.pdf?.book;
   const page = block.pdf?.page;
@@ -62,6 +58,7 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
   useEffect(() => {
     let alive = true;
     setLayout(undefined);
+    setDrawn(false);
     bytesRef.current = null;
 
     void (async () => {
@@ -87,7 +84,9 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
     const canvas = canvasRef.current;
     const bytes = bytesRef.current;
     if (!canvas || !layout || !bytes || !book || !page) return;
-    void drawPdfPage(book, bytes, page, canvas, scale).catch(() => {});
+    void drawPdfPage(book, bytes, page, canvas, scale)
+      .then(() => setDrawn(true))
+      .catch(() => {});
     const layer = textRef.current;
     if (!layer) return;
     setMeasured(null);
@@ -131,7 +130,10 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
     if (activeRef.current) revealElement(activeRef.current);
   }, [activeKey, boxes]);
 
-  if (!layout) return fallback;
+  if (layout === null) return fallback;
+  // A blank sheet while the page opens, not its text: the text flashing up and
+  // being swapped for the drawing is what made turning a page blink.
+  if (!layout) return <div className="mx-auto aspect-[1/1.414] w-full bg-paper" />;
 
   /** The sentence under a point of the page, as "paragraph:sentence". */
   function sentenceAt(event: MouseEvent<HTMLDivElement>): string | null {
@@ -158,6 +160,7 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
     <div
       className="relative mx-auto bg-paper"
       style={{ width: layout.width * scale, height: layout.height * scale }}
+      aria-busy={!drawn}
       // The text layer lies on top, so the page's text selects like any text;
       // a click that selected nothing is a click on a sentence.
       onMouseMove={(event) => setHovered(sentenceAt(event))}
@@ -172,7 +175,13 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
         if (key) void playAt(cursorOf(key));
       }}
     >
-      <canvas ref={canvasRef} className="block h-full w-full" />
+      <canvas
+        ref={canvasRef}
+        className={cn(
+          'block h-full w-full transition-opacity duration-300 ease-out motion-reduce:transition-none',
+          drawn ? 'opacity-100' : 'opacity-0',
+        )}
+      />
       {/* Under the text layer: the highlights never take a click or a selection. */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         {boxes.map((paragraph, paraIndex) =>
@@ -224,11 +233,12 @@ export default function PdfPage({ block, cursor, scale = 1, fallback }: PdfPageP
 
 /**
  * A page drawn as it is, with nothing to read on it: the cover of a book, a
- * scanned page. The text view shows it too, since it is all the page holds.
+ * scanned page.
  */
 export function PdfPicture({ book, page, scale = 1 }: { book: string; page: number; scale?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  const [drawn, setDrawn] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -237,7 +247,10 @@ export function PdfPicture({ book, page, scale = 1 }: { book: string; page: numb
       const layout = bytes ? await pdfPageLayout(book, bytes, page).catch(() => null) : null;
       if (!alive || !bytes || !layout) return;
       setSize({ width: layout.width, height: layout.height });
-      if (canvasRef.current) await drawPdfPage(book, bytes, page, canvasRef.current, scale).catch(() => {});
+      if (canvasRef.current) {
+        await drawPdfPage(book, bytes, page, canvasRef.current, scale).catch(() => {});
+        if (alive) setDrawn(true);
+      }
     })();
     return () => {
       alive = false;
@@ -246,119 +259,18 @@ export function PdfPicture({ book, page, scale = 1 }: { book: string; page: numb
 
   return (
     <div
-      className="mx-auto max-w-full bg-paper"
+      // A sheet's proportions until the page's own are known, so nothing jumps.
+      className={cn('mx-auto max-w-full bg-paper', !size && 'aspect-[1/1.414] w-full')}
       style={size ? { width: size.width * scale, aspectRatio: `${size.width} / ${size.height}` } : undefined}
     >
-      <canvas ref={canvasRef} className="block h-full w-full" />
+      <canvas
+        ref={canvasRef}
+        className={cn(
+          'block h-full w-full transition-opacity duration-300 ease-out motion-reduce:transition-none',
+          drawn ? 'opacity-100' : 'opacity-0',
+        )}
+      />
     </div>
-  );
-}
-
-/** What the text view takes from the page itself, beyond the stored text. */
-interface Reflowed {
-  images: PdfImage[];
-  paragraphs: PdfParagraph[];
-  /** Printed colour of each paragraph, when it is one worth keeping. */
-  colors: Array<string | null>;
-}
-
-/**
- * The text of a PDF page with its pictures put back where they sat, and the
- * look the page gives its paragraphs: italics, and a colour when the page
- * prints one (a tip in teal). A picture beside the first line of a paragraph
- * (a tip's lightbulb) floats at its left, with the text running past it, as on
- * the page; any other goes before the first paragraph that starts below it.
- * `paragraphs` are the rendered paragraphs of the block, in the page's order.
- */
-export function PdfReflow({ block, paragraphs }: { block: Block; paragraphs: ReactNode[] }) {
-  const [page, setPage] = useState<Reflowed | null>(null);
-  const book = block.pdf?.book;
-  const number = block.pdf?.page;
-
-  useEffect(() => {
-    let alive = true;
-    setPage(null);
-    void (async () => {
-      const bytes = book ? await loadBook(book) : null;
-      if (!bytes || !book || !number) return;
-      const [images, layout] = await Promise.all([
-        pdfPageImages(book, bytes, number).catch(() => []),
-        pdfPageLayout(book, bytes, number, block.pdf?.drop).catch(() => null),
-      ]);
-      const laid = layout?.paragraphs ?? [];
-      const colors = await pdfTextColors(book, bytes, number, laid.map((paragraph) => paragraph.box)).catch(
-        () => [],
-      );
-      if (alive) setPage({ images, paragraphs: laid, colors });
-    })();
-    return () => {
-      alive = false;
-    };
-    // drop is set once at import and never changes for a page.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, number]);
-
-  if (!page) return <>{paragraphs}</>;
-
-  // A layout that does not match the stored paragraphs gives no positions and
-  // no looks: the pictures then go after the text rather than in a wrong place.
-  const laid = page.paragraphs.length === paragraphs.length ? page.paragraphs : [];
-  const floats = new Map<number, PdfImage[]>();
-  const before = new Map<number, PdfImage[]>();
-  const after: PdfImage[] = [];
-  for (const image of page.images) {
-    const beside = laid.findIndex((paragraph) => besideFirstLine(image, paragraph));
-    const below = laid.findIndex((paragraph) => image.box.y <= paragraph.box.y);
-    if (beside >= 0) floats.set(beside, [...(floats.get(beside) ?? []), image]);
-    else if (below >= 0) before.set(below, [...(before.get(below) ?? []), image]);
-    else after.push(image);
-  }
-
-  const out: ReactNode[] = [];
-  paragraphs.forEach((paragraph, index) => {
-    for (const image of before.get(index) ?? []) out.push(picture(image));
-    for (const image of floats.get(index) ?? []) out.push(picture(image, true));
-    const look = laid[index];
-    const code = block.kinds?.[index] === 'code';
-    const color = code ? null : page.colors[index];
-    out.push(
-      look && isValidElement<{ className?: string; style?: CSSProperties }>(paragraph)
-        ? cloneElement(paragraph, {
-            className: cn(
-              paragraph.props.className,
-              look.italic && !code && 'italic',
-              // The paragraph after a floated picture starts under it.
-              floats.has(index - 1) && 'clear-left',
-            ),
-            style: color ? { ...paragraph.props.style, color } : paragraph.props.style,
-          })
-        : paragraph,
-    );
-  });
-  for (const image of after) out.push(picture(image));
-  return <>{out}</>;
-}
-
-/** The picture sits left of the paragraph's first line, level with it: an icon the line runs past. */
-function besideFirstLine(image: PdfImage, paragraph: PdfParagraph): boolean {
-  const line = paragraph.lines[0];
-  const start = line?.spans[0]?.x;
-  if (!line || start === undefined) return false;
-  const overlaps = image.box.y < line.bottom && image.box.y + image.box.height > line.top;
-  return overlaps && image.box.x + image.box.width <= start + 2;
-}
-
-function picture(image: PdfImage, float = false) {
-  return (
-    <img
-      key={`${image.box.x},${image.box.y}`}
-      src={image.src}
-      alt=""
-      className={cn('h-auto max-w-full rounded-sm', float ? 'float-left mt-0.5 mr-2' : 'my-3')}
-      // Its size on the page, so a small icon stays small and a figure fits the column.
-      width={Math.round(image.box.width)}
-      height={Math.round(image.box.height)}
-    />
   );
 }
 
