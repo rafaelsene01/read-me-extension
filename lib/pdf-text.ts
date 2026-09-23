@@ -3,6 +3,8 @@
  * so the grouping can be tested without loading pdf.js.
  */
 
+import type { ParagraphKind } from './types';
+
 /** A text run of a PDF page, in page coordinates at scale 1 (origin top-left). */
 export interface TextPiece {
   text: string;
@@ -13,6 +15,10 @@ export interface TextPiece {
   width: number;
   /** Font height; also the line height used to group lines into paragraphs. */
   height: number;
+  /** Set in a monospaced font: code, in a book about programming. */
+  mono?: boolean;
+  /** Set in an italic font. */
+  italic?: boolean;
 }
 
 /** A rectangle, in the same coordinates as TextPiece. */
@@ -45,6 +51,12 @@ export interface PdfParagraph {
   text: string;
   box: PdfBox;
   lines: PdfLine[];
+  /** Median height of its lines: the font size, for telling headings apart. */
+  size: number;
+  /** Most of its characters are in a monospaced font. */
+  mono: boolean;
+  /** Most of its characters are in an italic font: a tip, a quote, an aside. */
+  italic: boolean;
 }
 
 interface Line {
@@ -120,6 +132,21 @@ function layoutLine(line: Line): { text: string; spans: Span[] } {
   return { text: trimmed, spans: spans.filter((span) => span.end > span.start) };
 }
 
+/** Width of the first word of a line, prorated over the run it opens. */
+function firstWordWidth(line: Line): number {
+  const first = [...line.pieces].sort((a, b) => a.x - b.x)[0]!;
+  const text = first.text.trimStart();
+  const word = text.split(/\s/)[0] ?? '';
+  return text.length > 0 ? (first.width * word.length) / text.length : 0;
+}
+
+/** Most of the line is set in a monospaced font. */
+function isMono(line: Line): boolean {
+  const total = line.pieces.reduce((sum, piece) => sum + piece.text.length, 0);
+  const mono = line.pieces.reduce((sum, piece) => sum + (piece.mono ? piece.text.length : 0), 0);
+  return mono > total * 0.6;
+}
+
 function boxOf(lines: Line[]): PdfBox {
   const left = Math.min(...lines.map((line) => line.left));
   const right = Math.max(...lines.map((line) => line.right));
@@ -179,7 +206,17 @@ export function groupParagraphs(pieces: TextPiece[]): PdfParagraph[] {
         });
       }
 
-      paragraphs.push({ text, box: boxOf(laid.map((entry) => entry.line)), lines: out });
+      const heights = laid.map((entry) => entry.line.height).sort((a, b) => a - b);
+      const pieces = laid.flatMap((entry) => entry.line.pieces);
+      const chars = (list: TextPiece[]): number => list.reduce((sum, piece) => sum + piece.text.length, 0);
+      paragraphs.push({
+        text,
+        box: boxOf(laid.map((entry) => entry.line)),
+        lines: out,
+        size: heights[Math.floor(heights.length / 2)]!,
+        mono: chars(pieces.filter((piece) => piece.mono)) > chars(pieces) * 0.6,
+        italic: chars(pieces.filter((piece) => piece.italic)) > chars(pieces) * 0.6,
+      });
     }
 
     group = [];
@@ -191,10 +228,19 @@ export function groupParagraphs(pieces: TextPiece[]): PdfParagraph[] {
       const left = Math.min(...group.map((other) => other.left));
       const right = Math.max(...group.map((other) => other.right));
       const continues =
+        // A line of code is a paragraph of its own: its breaks are the code's.
+        !isMono(line) &&
+        !isMono(previous) &&
+        // A change of size is a heading meeting the text under it.
+        Math.abs(line.height - previous.height) <= previous.height * 0.15 &&
         line.top - previous.bottom <= previous.height * 0.8 &&
         line.right > left &&
         line.left < right &&
-        previous.right >= right - previous.height * 2 &&
+        // The line before ran on until the next word no longer fitted: a
+        // wrap, not the end of the paragraph. Ragged-right text stops short
+        // of the column by up to a word's width.
+        previous.right >=
+          right - Math.max(previous.height * 2, firstWordWidth(line) + previous.height * 0.5) &&
         line.left <= left + previous.height * 0.5;
       if (!continues) flush();
     }
@@ -257,4 +303,100 @@ export function sentenceBoxes(paragraph: PdfParagraph, sentences: string[]): Pdf
     from = at + sentence.length;
     return rangeBoxes(paragraph, at, from);
   });
+}
+
+/** A bullet opening a paragraph: the symbol, not the text after it. */
+const BULLET = /^[•●▪◦‣∙■□►▸]\s+(?=\S)/;
+
+/**
+ * The size most of the text is set in, weighted by length: the body text.
+ * Measured over the whole document, so a page holding only a title still
+ * reads that title as bigger than the body.
+ */
+export function bodySize(paragraphs: PdfParagraph[]): number {
+  const weight = new Map<number, number>();
+  for (const { size, text } of paragraphs) {
+    const key = Math.round(size * 2) / 2;
+    weight.set(key, (weight.get(key) ?? 0) + text.length);
+  }
+  let best = 0;
+  let most = -1;
+  for (const [size, total] of weight) {
+    if (total > most) [best, most] = [size, total];
+  }
+  return best;
+}
+
+/**
+ * What each paragraph of a page is, for the text view: code (monospaced),
+ * a heading (short and clearly bigger than the body), a list item (opens
+ * with a bullet) or plain text. The paragraphs themselves are left as they
+ * are, so the page view still finds every sentence where it was.
+ *
+ * ponytail: font size and font family only; a heading set in bold at body
+ * size reads as text. Add the font weight if books need it.
+ */
+export function classify(paragraph: PdfParagraph, body: number): ParagraphKind {
+  if (paragraph.mono) return 'code';
+  if (paragraph.text.length <= 150 && body > 0) {
+    const ratio = paragraph.size / body;
+    if (ratio >= 1.6) return 'h1';
+    if (ratio >= 1.3) return 'h2';
+    if (ratio >= 1.12) return 'h3';
+  }
+  return BULLET.test(paragraph.text) ? 'li' : 'p';
+}
+
+/** The text a list item is read and shown with: its bullet goes, the list marker replaces it. */
+export function withoutBullet(text: string): string {
+  return text.replace(BULLET, '');
+}
+
+/** A text run as it sits on its page: its text and where, to the unit. */
+export function signature(piece: TextPiece): string {
+  // On a grid of 4 units: the same menu drifts by a unit from page to page.
+  const at = (value: number): number => Math.round(value / 4) * 4;
+  return `${piece.text.trim()}@${at(piece.x)},${at(piece.y)}`;
+}
+
+/**
+ * The text runs that come back at the same spot on several pages: a website
+ * menu printed along with the book, a running header. They are the page's
+ * frame, not its text, and left in they glue themselves to the lines they sit
+ * beside. Code is never frame: a lone brace can well sit at the same spot twice.
+ *
+ * ponytail: same text at the same spot, 3 pages or more; a header that carries
+ * the page number changes text every page and stays in. Match on position
+ * alone if that shows up.
+ */
+export function boilerplate(pages: TextPiece[][]): string[] {
+  if (pages.length < 5) return [];
+  const seen = new Map<string, number>();
+  for (const pieces of pages) {
+    const frame = pieces.filter((piece) => !piece.mono && /\p{L}/u.test(piece.text));
+    for (const key of new Set(frame.map(signature))) seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  return [...seen].filter(([, count]) => count >= 3).map(([key]) => key);
+}
+
+/**
+ * Whether an embedded font file is an italic: its `head` table marks it, or
+ * its `post` table slants it. A book can embed its italic under the plain
+ * family name with nothing in the PDF saying so, and only the file tells.
+ */
+export function italicFile(data: Uint8Array | undefined): boolean {
+  if (!data || data.length < 12) return false;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const tables = view.getUint16(4);
+  for (let index = 0; index < tables; index++) {
+    const record = 12 + index * 16;
+    if (record + 16 > data.length) break;
+    const tag = String.fromCharCode(...data.subarray(record, record + 4));
+    const offset = view.getUint32(record + 8);
+    // head.macStyle bit 1 is italic.
+    if (tag === 'head' && offset + 46 <= data.length && view.getUint16(offset + 44) & 2) return true;
+    // post.italicAngle, a 16.16 fixed number of degrees.
+    if (tag === 'post' && offset + 8 <= data.length && view.getInt32(offset + 4) !== 0) return true;
+  }
+  return false;
 }

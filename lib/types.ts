@@ -20,7 +20,7 @@ export interface Translation {
   sourceTextHash: string;
 }
 
-export type ParagraphKind = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'quote' | 'li';
+export type ParagraphKind = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'quote' | 'li' | 'code';
 
 export interface Block {
   /** crypto.randomUUID(), stable for as long as the block exists. */
@@ -38,7 +38,14 @@ export interface Block {
   /** EPUB chapters only: the book's document id and the chapter's path inside the zip. */
   epub?: { book: string; path: string };
   /** PDF pages only: the file's document id and the page number (1-based). */
-  pdf?: { book: string; page: number };
+  pdf?: {
+    book: string;
+    page: number;
+    /** Text runs repeated on most pages (a site menu, running headers), left out of the text. */
+    drop?: string[];
+    /** Code paragraphs: how many characters each line is indented, by paragraph. */
+    indents?: number[];
+  };
   translation?: Translation;
   createdAt: number;
 }

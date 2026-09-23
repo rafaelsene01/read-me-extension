@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { groupParagraphs, sentenceBoxes, type TextPiece } from './pdf-text';
+import {
+  bodySize,
+  boilerplate,
+  classify,
+  groupParagraphs,
+  italicFile,
+  sentenceBoxes,
+  withoutBullet,
+  type TextPiece,
+} from './pdf-text';
 
 /** One full-width line of a page: height 10, so lines stack every 12 units. */
 function line(text: string, index: number, x = 0, width = 100): TextPiece {
@@ -92,5 +101,90 @@ describe('sentenceBoxes', () => {
       expect(paragraph.text.slice(l.start, l.end).trim()).not.toBe('');
     }
     expect(sentenceBoxes(paragraph, ['parágrafo inteiro.'])[0]).toHaveLength(2);
+  });
+});
+
+describe('classify', () => {
+  /** One paragraph of `text` set at `height`, placed well apart from the others. */
+  function paragraph(text: string, height: number, index: number, mono = false) {
+    return groupParagraphs([{ text, x: 0, y: index * 100, width: 100, height, mono }])[0]!;
+  }
+
+  it('tells headings, code and list items from the body text', () => {
+    const paragraphs = [
+      paragraph('Refactoring', 20, 0),
+      paragraph('The Starting Point', 14, 1),
+      paragraph('A long enough body paragraph that sets the size most text is in.', 10, 2),
+      paragraph('Another paragraph of body text, also at the usual size.', 10, 3),
+      paragraph('function statement(invoice) {', 10, 4, true),
+      paragraph('• extract function', 10, 5),
+    ];
+    const body = bodySize(paragraphs);
+    expect(body).toBe(10);
+    expect(paragraphs.map((p) => classify(p, body))).toEqual(['h1', 'h2', 'p', 'p', 'code', 'li']);
+  });
+
+  it('drops the bullet of a list item, and only the bullet', () => {
+    expect(withoutBullet('• extract function')).toBe('extract function');
+    expect(withoutBullet('— M. Fowler')).toBe('— M. Fowler');
+  });
+});
+
+describe('groupParagraphs on real book pages', () => {
+  it('keeps a ragged-right line in its paragraph when the next word would not have fitted', () => {
+    const paragraphs = groupParagraphs([
+      line('Primeira linha que vai quase ao fim', 0, 0, 100),
+      line('Linha curta porque', 1, 0, 70),
+      line('extraordinariamente seguiu.', 2, 0, 60),
+    ]);
+    expect(paragraphs).toHaveLength(1);
+  });
+
+  it('starts a new paragraph where the size changes, and gives each line of code its own', () => {
+    const paragraphs = groupParagraphs([
+      { text: 'THE STARTING POINT', x: 0, y: 0, width: 100, height: 14 },
+      line('Texto logo embaixo do título.', 1.3),
+      { text: 'function a() {', x: 0, y: 40, width: 100, height: 10, mono: true },
+      { text: 'return 1;', x: 10, y: 52, width: 90, height: 10, mono: true },
+    ]);
+    expect(paragraphs.map((p) => p.text)).toEqual([
+      'THE STARTING POINT',
+      'Texto logo embaixo do título.',
+      'function a() {',
+      'return 1;',
+    ]);
+  });
+});
+
+describe('boilerplate', () => {
+  it('finds text repeated at the same spot on several pages, never code', () => {
+    const menu = { text: 'History', x: 63, y: 169, width: 30, height: 10 };
+    const brace = { text: '}', x: 97, y: 413, width: 6, height: 10, mono: true };
+    const pages = [0, 1, 2, 3, 4].map((index) => [
+      { ...menu, y: menu.y + (index % 2) * 0.6 },
+      brace,
+      line(`Texto da página ${index}`, 5),
+    ]);
+    expect(boilerplate(pages)).toEqual(['History@64,168']);
+  });
+});
+
+describe('italicFile', () => {
+  /** A font file holding one table, `tag`, with `write` filling its bytes. */
+  function font(tag: string, write: (view: DataView, at: number) => void): Uint8Array {
+    const bytes = new Uint8Array(12 + 16 + 64);
+    const view = new DataView(bytes.buffer);
+    view.setUint16(4, 1);
+    [...tag].forEach((char, index) => (bytes[12 + index] = char.charCodeAt(0)));
+    view.setUint32(12 + 8, 28);
+    write(view, 28);
+    return bytes;
+  }
+
+  it('reads the italic bit of head, or the slant of post', () => {
+    expect(italicFile(font('head', (view, at) => view.setUint16(at + 44, 2)))).toBe(true);
+    expect(italicFile(font('post', (view, at) => view.setInt32(at + 4, -12 << 16)))).toBe(true);
+    expect(italicFile(font('head', () => {}))).toBe(false);
+    expect(italicFile(undefined)).toBe(false);
   });
 });

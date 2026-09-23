@@ -29,6 +29,7 @@ import type { Block, Cursor, Paragraph, ParagraphKind, Prefs } from '../lib/type
 // is actually shown, so it stops riding along in the side panel, which never
 // renders a page at all.
 const PdfPage = lazy(() => import('./PdfPage'));
+const PdfReflow = lazy(() => import('./PdfPage').then((module) => ({ default: module.PdfReflow })));
 
 interface BlockListProps {
   blocks: Block[];
@@ -44,6 +45,8 @@ interface BlockListProps {
   visible?: string;
   /** Documents page: show a chapter with the HTML and CSS of the book when it is available. */
   bookView?: boolean;
+  /** Documents page: a PDF page as its text (headings, code, lists) instead of the drawn page. */
+  reflow?: boolean;
 }
 
 /**
@@ -69,8 +72,9 @@ function sourceLabel(url: string): string {
   }
 }
 
-/** Tag for a paragraph: headings keep their level, everything else renders as <p>. */
-function kindTag(kind: ParagraphKind): 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' {
+/** Tag for a paragraph: headings keep their level, code is <pre>, everything else renders as <p>. */
+function kindTag(kind: ParagraphKind): 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'pre' {
+  if (kind === 'code') return 'pre';
   return kind === 'quote' || kind === 'li' ? 'p' : kind;
 }
 
@@ -78,9 +82,9 @@ function kindTag(kind: ParagraphKind): 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' |
 function kindClasses(kind: ParagraphKind): string {
   switch (kind) {
     case 'h1':
-      return 'text-[1.6em] font-semibold';
+      return 'mt-[0.6em] border-b pb-[0.2em] text-[1.6em] font-semibold';
     case 'h2':
-      return 'text-[1.4em] font-semibold';
+      return 'mt-[0.6em] border-b pb-[0.2em] text-[1.4em] font-semibold';
     case 'h3':
       return 'text-[1.2em] font-semibold';
     case 'h4':
@@ -91,6 +95,10 @@ function kindClasses(kind: ParagraphKind): string {
       return 'border-l-2 pl-4 italic text-muted-foreground';
     case 'li':
       return 'ml-6 list-item list-disc';
+    case 'code':
+      // One line of code per paragraph; kindsView joins a run of them into one block.
+      // Wraps rather than scrolls: the sentences inside stay clickable spans.
+      return 'whitespace-pre-wrap bg-muted px-3 font-mono text-[0.85em] leading-normal';
     default:
       return '';
   }
@@ -105,6 +113,7 @@ export default function BlockList({
   scale,
   visible,
   bookView,
+  reflow = false,
 }: BlockListProps) {
   const activeRef = useRef<HTMLSpanElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -142,8 +151,24 @@ export default function BlockList({
     return paragraphs.map((paragraph, paraIndex) => {
       const kind = block.kinds?.[paraIndex] ?? 'p';
       const Tag = kindTag(kind);
+      // A run of code lines reads as one block: square inner edges, no gap
+      // between them, the line's own indentation kept.
+      const code = kind === 'code';
+      const first = code && block.kinds?.[paraIndex - 1] !== 'code';
+      const last = code && block.kinds?.[paraIndex + 1] !== 'code';
+      const indent = code ? (block.pdf?.indents?.[paraIndex] ?? 0) : 0;
       return (
-        <Tag key={paragraph.id} className={cn('mb-2 last:mb-0', kindClasses(kind))}>
+        <Tag
+          key={paragraph.id}
+          className={cn(
+            'mb-2 last:mb-0',
+            kindClasses(kind),
+            code && !last && 'mb-0',
+            first && 'rounded-t-md pt-2',
+            last && 'mb-3 rounded-b-md pb-2',
+          )}
+          style={indent ? { paddingLeft: `calc(0.75rem + ${indent}ch)` } : undefined}
+        >
           {paragraph.sentences.map((sentence, sentIndex) => {
             const active =
               block.id === cursor?.blockId &&
@@ -354,6 +379,10 @@ export default function BlockList({
                 </div>
               ) : paragraphs === null ? (
                 <p className="text-muted-foreground">{t('Bloco ainda não traduzido.')}</p>
+              ) : bookView && block.pdf && reflow ? (
+                <Suspense fallback={<>{kindsView(block, paragraphs)}</>}>
+                  <PdfReflow block={block} paragraphs={kindsView(block, paragraphs)} />
+                </Suspense>
               ) : bookView && block.pdf ? (
                 // Falls back to the extracted paragraphs when the file is no longer
                 // stored, and shows the same while pdf.js is being fetched.

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  AlignLeft,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
   FileAudio,
+  FileImage,
   FileText,
   Languages,
   Library,
@@ -20,6 +22,7 @@ import { languageName } from '../../components/Controls';
 import LibraryList from '../../components/LibraryList';
 import Mp3Button from '../../components/Mp3Button';
 import NewDocumentMenu from '../../components/NewDocumentMenu';
+import PdfDocument from '../../components/PdfDocument';
 import Settings from '../../components/Settings';
 import { useTextDocument } from '../../components/useTextDocument';
 import TranslatePanel, { LANGS } from '../../components/TranslatePanel';
@@ -35,6 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { readingTime, toLibraryDocument } from '../../lib/document';
 import { applyLang } from '../../lib/edit';
@@ -75,6 +79,9 @@ export default function App() {
   const [composing, setComposing] = useState(false);
   // Book pages: one block (chapter) at a time when any block carries kinds.
   const [page, setPage] = useState(0);
+  // A PDF shows its pages as drawn; the text view reflows them into headings,
+  // paragraphs, code and lists that follow the width and the font zoom.
+  const [reflow, setReflow] = useState(false);
 
   useEffect(() => {
     // This page is the reader here: the extension's side panel stays hidden on
@@ -139,8 +146,9 @@ export default function App() {
 
   const empty = blocks.length === 0;
   const paged = blocks.some((block) => block.kinds);
+  const isPdf = blocks.some((block) => block.pdf);
   // A PDF is drawn as it is, so the zoom buttons scale the page instead of the font.
-  const scaled = blocks.some((block) => block.pdf);
+  const scaled = isPdf && !reflow;
   const current = Math.max(0, Math.min(page, blocks.length - 1));
   const activeBlock = blocks.find((block) => block.id === state.cursor?.blockId) ?? blocks[0];
   const activeLang = activeBlock?.lang ?? navigator.language;
@@ -322,6 +330,26 @@ export default function App() {
                           )}
                         </SelectContent>
                       </Select>
+                      {isPdf && (
+                        <ToggleGroup
+                          type="single"
+                          variant="outline"
+                          size="sm"
+                          value={reflow ? 'text' : 'original'}
+                          onValueChange={(next) => {
+                            if (next) setReflow(next === 'text');
+                          }}
+                        >
+                          <ToggleGroupItem value="original" className="px-2.5 text-xs">
+                            <FileImage />
+                            {t('Original')}
+                          </ToggleGroupItem>
+                          <ToggleGroupItem value="text" className="px-2.5 text-xs">
+                            <AlignLeft />
+                            {t('Texto')}
+                          </ToggleGroupItem>
+                        </ToggleGroup>
+                      )}
                       {!composing && zoomButton(-1)}
                       {!composing && zoomButton(1)}
                       <Tooltip>
@@ -364,16 +392,31 @@ export default function App() {
                   // The one scroll box of the page; the reading scrolls inside it.
                   // Small inset so focus rings and card shadows are not clipped.
                   <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
-                    <BlockList
-                      blocks={blocks}
-                      cursor={state.cursor}
-                      activeTab={prefs.activeTab}
-                      playing={state.playing}
-                      textSize={ZOOM[zoom]}
-                      scale={SCALE[zoom]}
-                      visible={paged ? blocks[current]!.id : undefined}
-                      bookView
-                    />
+                    {isPdf ? (
+                      // A PDF scrolls as one document, every page under the other.
+                      <PdfDocument
+                        blocks={blocks}
+                        cursor={state.cursor}
+                        activeTab={prefs.activeTab}
+                        playing={state.playing}
+                        reflow={reflow}
+                        textSize={ZOOM[zoom]!}
+                        scale={SCALE[zoom]!}
+                        page={current}
+                        onPage={goToPage}
+                      />
+                    ) : (
+                      <BlockList
+                        blocks={blocks}
+                        cursor={state.cursor}
+                        activeTab={prefs.activeTab}
+                        playing={state.playing}
+                        textSize={ZOOM[zoom]}
+                        scale={SCALE[zoom]}
+                        visible={paged ? blocks[current]!.id : undefined}
+                        bookView
+                      />
+                    )}
                   </div>
                 )}
               </section>
